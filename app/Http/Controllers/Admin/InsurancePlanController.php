@@ -9,15 +9,27 @@ use Illuminate\Http\Request;
 
 class InsurancePlanController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $plans = InsurancePlan::orderBy('id')->get();
+        $search = trim((string) $request->query('search', ''));
+
+        $plans = InsurancePlan::query()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where('specializations', 'like', '%' . $search . '%')
+                    ->orWhere('amount_per_lakh', 'like', '%' . $search . '%')
+                    ->orWhere('service_tax_percent', 'like', '%' . $search . '%');
+            })
+            ->orderBy('id')
+            ->paginate(15)
+            ->withQueryString();
+
         $specializations = Specialization::orderBy('name')->get();
 
         return view('admin.insurance-plans.index', [
             'plans' => $plans,
-            'totalPlans' => $plans->count(),
+            'totalPlans' => $plans->total(),
             'specializations' => $specializations,
+            'search' => $search,
         ]);
     }
 

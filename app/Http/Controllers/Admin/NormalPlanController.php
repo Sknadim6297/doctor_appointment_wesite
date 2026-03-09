@@ -8,13 +8,23 @@ use Illuminate\Http\Request;
 
 class NormalPlanController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $plans = NormalPlan::orderBy('id')->get();
+        $search = trim((string) $request->query('search', ''));
+
+        $plans = NormalPlan::query()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where('coverage_lakh', 'like', '%' . $search . '%')
+                    ->orWhere('yearly_amount', 'like', '%' . $search . '%');
+            })
+            ->orderBy('id')
+            ->paginate(15)
+            ->withQueryString();
 
         return view('admin.plans.index', [
             'plans' => $plans,
-            'totalPlans' => $plans->count(),
+            'totalPlans' => $plans->total(),
+            'search' => $search,
         ]);
     }
 

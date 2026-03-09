@@ -8,13 +8,22 @@ use Illuminate\Http\Request;
 
 class SpecializationController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $specializations = Specialization::orderBy('id')->get();
+        $search = trim((string) $request->query('search', ''));
+
+        $specializations = Specialization::query()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where('name', 'like', '%' . $search . '%');
+            })
+            ->orderBy('id')
+            ->paginate(15)
+            ->withQueryString();
 
         return view('admin.master-data.specialization', [
             'specializations' => $specializations,
-            'totalSpecializations' => $specializations->count(),
+            'totalSpecializations' => $specializations->total(),
+            'search' => $search,
         ]);
     }
 

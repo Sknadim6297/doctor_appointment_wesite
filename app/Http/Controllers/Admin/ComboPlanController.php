@@ -9,15 +9,27 @@ use Illuminate\Http\Request;
 
 class ComboPlanController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $plans = ComboPlan::orderBy('id')->get();
+        $search = trim((string) $request->query('search', ''));
+
+        $plans = ComboPlan::query()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where('specializations', 'like', '%' . $search . '%')
+                    ->orWhere('coverage_lakh', 'like', '%' . $search . '%')
+                    ->orWhere('yearly_amount', 'like', '%' . $search . '%');
+            })
+            ->orderBy('id')
+            ->paginate(15)
+            ->withQueryString();
+
         $specializations = Specialization::orderBy('name')->get();
 
         return view('admin.combo-plans.index', [
             'plans' => $plans,
-            'totalPlans' => $plans->count(),
+            'totalPlans' => $plans->total(),
             'specializations' => $specializations,
+            'search' => $search,
         ]);
     }
 

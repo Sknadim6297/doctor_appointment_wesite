@@ -21,10 +21,26 @@
 }">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h3 class="section-title mb-0">Combo Plan ({{ $totalPlans ?? 0 }})</h3>
-        <button type="button" @click="addModalOpen = true" class="btn-brand !px-4 !py-2 text-sm">
-            <i class="ri-pencil-line"></i>
-            <span>Add Plan</span>
-        </button>
+        <div class="flex flex-wrap items-center gap-2">
+            <form method="GET" action="{{ route('admin.combo-plans') }}" class="flex items-center gap-2">
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ $search ?? '' }}"
+                    placeholder="Search specialization or amounts"
+                    class="master-search-input"
+                >
+                <button type="submit" class="btn btn-primary">Search</button>
+                @if(!empty($search))
+                    <a href="{{ route('admin.combo-plans') }}" class="btn btn-default">Clear</a>
+                @endif
+            </form>
+
+            <button type="button" @click="addModalOpen = true" class="btn-brand !px-4 !py-2 text-sm">
+                <i class="ri-pencil-line"></i>
+                <span>Add Plan</span>
+            </button>
+        </div>
     </div>
 
     <div class="overflow-x-auto">
@@ -57,7 +73,7 @@
                         $specs = is_array($plan->specializations) ? implode(', ', $plan->specializations) : $plan->specializations;
                     @endphp
                     <tr>
-                        <td>{{ $loop->iteration }}</td>
+                        <td>{{ $plans->firstItem() + $loop->index }}</td>
                         <td style="max-width: 400px; word-wrap: break-word; white-space: normal;">{{ $specs }}</td>
                         <td>Rs {{ $coverage }}Lakh</td>
                         <td>{{ $fmt($monthly) }}</td>
@@ -93,6 +109,12 @@
             </tbody>
         </table>
     </div>
+
+    @if($plans->hasPages())
+        <div class="mt-4">
+            {{ $plans->links() }}
+        </div>
+    @endif
 
     <!-- Add Modal -->
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4" x-show="addModalOpen" x-transition.opacity x-cloak>

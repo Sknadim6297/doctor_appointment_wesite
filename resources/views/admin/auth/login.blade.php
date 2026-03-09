@@ -4,15 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Login - MediForum</title>
+    <link rel="icon" type="image/jpeg" href="{{ asset('assets/images/mediforum-logo.jpeg') }}">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/css/admin-theme.css', 'resources/js/app.js'])
 </head>
 <body class="login-viewport flex items-center justify-center px-5">
     <section class="login-card">
         <div class="mb-7 text-center">
-            <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-2xl text-white shadow-lg shadow-blue-200">
-                <i class="ri-hospital-line"></i>
-            </div>
+            <img src="{{ asset('assets/images/mediforum-logo.jpeg') }}" alt="MediForum logo" class="mx-auto mb-4 h-20 w-20 rounded-full border border-slate-200 bg-white object-cover p-1 shadow-lg shadow-blue-100">
             <h1 class="page-title text-3xl font-bold text-slate-900">Welcome Back</h1>
             <p class="mt-2 text-sm text-slate-600">Doctor Enrollment & Membership Control Center</p>
         </div>

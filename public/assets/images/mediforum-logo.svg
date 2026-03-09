@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Medical Defence Forum of India logo">
+  <defs>
+    <style>
+      .ring { fill: #fff; stroke: #111; stroke-width: 12; }
+      .inner-ring { fill: #fff; stroke: #111; stroke-width: 5; }
+      .mark { fill: none; stroke: #111; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+      .text { font: 600 26px 'Times New Roman', serif; letter-spacing: 3px; fill: #111; }
+      .small { font: 700 26px 'Times New Roman', serif; letter-spacing: 2px; fill: #111; }
+    </style>
+    <path id="upperArc" d="M 82 256 A 174 174 0 0 1 430 256" />
+    <path id="lowerArc" d="M 430 256 A 174 174 0 0 1 82 256" />
+  </defs>
+
+  <circle cx="256" cy="256" r="240" class="ring" />
+  <circle cx="256" cy="256" r="210" class="inner-ring" />
+
+  <text class="text">
+    <textPath href="#upperArc" startOffset="50%" text-anchor="middle">MEDICAL DEFENCE FORUM OF INDIA</textPath>
+  </text>
+  <text class="small">
+    <textPath href="#lowerArc" startOffset="50%" text-anchor="middle">ESTD1999</textPath>
+  </text>
+
+  <circle cx="256" cy="256" r="145" fill="none" stroke="#111" stroke-width="4" />
+
+  <path class="mark" d="M256 160v180" />
+  <path class="mark" d="M208 206h96" />
+  <path class="mark" d="M198 206l-42 20" />
+  <path class="mark" d="M314 206l42 20" />
+  <path class="mark" d="M156 226c12 24 30 39 52 39s40-15 52-39" />
+  <path class="mark" d="M356 226c-12 24-30 39-52 39s-40-15-52-39" />
+  <path class="mark" d="M228 160l12-24m16 24l-12-24" />
+  <path class="mark" d="M256 340l-16 24m16-24l16 24" />
+
+  <g fill="none" stroke="#111" stroke-width="5" stroke-linecap="round">
+    <path d="M160 175c-15 12-25 27-31 43" />
+    <path d="M181 163c-8 4-12 7-18 11" />
+    <path d="M352 175c15 12 25 27 31 43" />
+    <path d="M331 163c8 4 12 7 18 11" />
+    <path d="M126 312c12 19 29 36 50 47" />
+    <path d="M386 312c-12 19-29 36-50 47" />
+  </g>
+</svg>

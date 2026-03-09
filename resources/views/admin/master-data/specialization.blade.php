@@ -17,10 +17,26 @@
 }">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h3 class="section-title mb-0">Specialization ({{ $totalSpecializations ?? 0 }})</h3>
-        <button type="button" @click="addModalOpen = true" class="btn-brand !px-4 !py-2 text-sm">
-            <i class="ri-pencil-line"></i>
-            <span>Add Specialization</span>
-        </button>
+        <div class="flex flex-wrap items-center gap-2">
+            <form method="GET" action="{{ route('admin.specialization') }}" class="flex items-center gap-2">
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ $search ?? '' }}"
+                    placeholder="Search specialization"
+                    class="master-search-input"
+                >
+                <button type="submit" class="btn btn-primary">Search</button>
+                @if(!empty($search))
+                    <a href="{{ route('admin.specialization') }}" class="btn btn-default">Clear</a>
+                @endif
+            </form>
+
+            <button type="button" @click="addModalOpen = true" class="btn-brand !px-4 !py-2 text-sm">
+                <i class="ri-pencil-line"></i>
+                <span>Add Specialization</span>
+            </button>
+        </div>
     </div>
 
     <div class="overflow-x-auto">
@@ -35,7 +51,7 @@
             <tbody id="specializationTableBody">
                 @forelse($specializations as $item)
                     <tr>
-                        <td>{{ $item->id }}</td>
+                        <td>{{ $specializations->firstItem() + $loop->index }}</td>
                         <td>{{ $item->name }}</td>
                         <td>
                             <div class="flex flex-wrap items-center gap-2">
@@ -66,6 +82,12 @@
             </tbody>
         </table>
     </div>
+
+    @if($specializations->hasPages())
+        <div class="mt-4">
+            {{ $specializations->links() }}
+        </div>
+    @endif
 
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4" x-show="addModalOpen" x-transition.opacity x-cloak>
         <div class="modal-content w-full max-w-2xl" @click.away="addModalOpen = false">

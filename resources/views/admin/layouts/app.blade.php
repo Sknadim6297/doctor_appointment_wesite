@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'Dashboard') - MediForum Admin</title>
+    <link rel="icon" type="image/jpeg" href="{{ asset('assets/images/mediforum-logo.jpeg') }}">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/css/admin-theme.css', 'resources/js/app.js'])
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -25,9 +26,7 @@
              }">
             <div class="mb-6 flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
                 <div class="flex items-center gap-3">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-xl text-blue-700">
-                        <i class="ri-verified-badge-line"></i>
-                    </div>
+                    <img src="{{ asset('assets/images/mediforum-logo.jpeg') }}" alt="MediForum logo" class="h-11 w-11 rounded-full border border-white/80 bg-white object-cover p-0.5">
                     <div>
                         <p class="brand-title text-lg font-bold text-white">MediForum</p>
                         <p class="text-xs text-blue-100">Admin Console</p>
@@ -128,6 +127,7 @@
                     <button class="rounded-xl border border-slate-200 bg-white p-2 text-slate-700 lg:hidden" @click="sidebarOpen = true">
                         <i class="ri-menu-2-line"></i>
                     </button>
+                    <img src="{{ asset('assets/images/mediforum-logo.jpeg') }}" alt="MediForum logo" class="hidden h-9 w-9 rounded-full border border-slate-200 bg-white object-cover p-0.5 md:block">
                     <h1 class="page-title text-xl font-bold text-slate-900">@yield('page-title', 'Dashboard')</h1>
                 </div>
 
