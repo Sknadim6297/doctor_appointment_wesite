@@ -1,0 +1,109 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\AdminAuthController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\AdminManagementController;
+use App\Http\Controllers\Admin\SpecializationController;
+use App\Http\Controllers\Admin\NormalPlanController;
+use App\Http\Controllers\Admin\HighRiskPlanController;
+use App\Http\Controllers\Admin\ComboPlanController;
+use App\Http\Controllers\Admin\InsurancePlanController;
+
+Route::get('/', function () {
+    return redirect()->route('admin.login');
+});
+
+// Admin Authentication Routes
+Route::prefix('admin')->name('admin.')->group(function () {
+    // Guest routes
+    Route::middleware('guest')->group(function () {
+        Route::get('login', [AdminAuthController::class, 'showLoginForm'])->name('login');
+        Route::post('login', [AdminAuthController::class, 'login'])->name('login.post');
+    });
+
+    // Authenticated admin routes
+    Route::middleware('admin')->group(function () {
+        Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
+        
+        // Dashboard
+        Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        
+        // Doctors Management
+        Route::get('doctors', function () {
+            return view('admin.doctors.index');
+        })->name('doctors');
+        
+        // Enrollment Management
+        Route::get('enrollment', function () {
+            return view('admin.enrollment.index');
+        })->name('enrollment');
+        
+        // Money Receipts
+        Route::get('receipts', function () {
+            return view('admin.receipts.index');
+        })->name('receipts');
+        
+        // Doctor Cases
+        Route::get('cases', function () {
+            return view('admin.cases.index');
+        })->name('cases');
+        
+        // Lapse List
+        Route::get('lapse', function () {
+            return view('admin.lapse.index');
+        })->name('lapse');
+        
+        // Normal Plans
+        Route::get('plans', [NormalPlanController::class, 'index'])->name('plans');
+        Route::post('plans', [NormalPlanController::class, 'store'])->name('plans.store');
+        Route::put('plans/{plan}', [NormalPlanController::class, 'update'])->name('plans.update');
+        Route::delete('plans/{plan}', [NormalPlanController::class, 'destroy'])->name('plans.destroy');
+
+        // High Risk Plans
+        Route::get('high-risk-plans', [HighRiskPlanController::class, 'index'])->name('high-risk-plans');
+        Route::post('high-risk-plans', [HighRiskPlanController::class, 'store'])->name('high-risk-plans.store');
+        Route::put('high-risk-plans/{highRiskPlan}', [HighRiskPlanController::class, 'update'])->name('high-risk-plans.update');
+        Route::delete('high-risk-plans/{highRiskPlan}', [HighRiskPlanController::class, 'destroy'])->name('high-risk-plans.destroy');
+
+        // Combo Plans
+        Route::get('combo-plans', [ComboPlanController::class, 'index'])->name('combo-plans');
+        Route::post('combo-plans', [ComboPlanController::class, 'store'])->name('combo-plans.store');
+        Route::put('combo-plans/{comboPlan}', [ComboPlanController::class, 'update'])->name('combo-plans.update');
+        Route::delete('combo-plans/{comboPlan}', [ComboPlanController::class, 'destroy'])->name('combo-plans.destroy');
+
+        // Insurance Plans
+        Route::get('insurance-plans', [InsurancePlanController::class, 'index'])->name('insurance-plans');
+        Route::post('insurance-plans', [InsurancePlanController::class, 'store'])->name('insurance-plans.store');
+        Route::put('insurance-plans/{insurancePlan}', [InsurancePlanController::class, 'update'])->name('insurance-plans.update');
+        Route::delete('insurance-plans/{insurancePlan}', [InsurancePlanController::class, 'destroy'])->name('insurance-plans.destroy');
+
+        // Specialization
+        Route::get('specialization', [SpecializationController::class, 'index'])->name('specialization');
+        Route::post('specialization', [SpecializationController::class, 'store'])->name('specialization.store');
+        Route::put('specialization/{specialization}', [SpecializationController::class, 'update'])->name('specialization.update');
+        Route::delete('specialization/{specialization}', [SpecializationController::class, 'destroy'])->name('specialization.destroy');
+        
+        // Doctor Posts
+        Route::get('posts', function () {
+            return view('admin.posts.index');
+        })->name('posts');
+        
+        // Reports
+        Route::get('reports', function () {
+            return view('admin.reports.index');
+        })->name('reports');
+        
+        // Super Admin Only Routes
+        Route::middleware('super_admin')->group(function () {
+            Route::get('admin-management', [AdminManagementController::class, 'index'])->name('admin-management.index');
+            Route::get('admin-management/create', [AdminManagementController::class, 'create'])->name('admin-management.create');
+            Route::post('admin-management', [AdminManagementController::class, 'store'])->name('admin-management.store');
+            Route::get('admin-management/{admin}/edit', [AdminManagementController::class, 'edit'])->name('admin-management.edit');
+            Route::put('admin-management/{admin}', [AdminManagementController::class, 'update'])->name('admin-management.update');
+            Route::post('admin-management/{admin}/reset-password', [AdminManagementController::class, 'resetPassword'])->name('admin-management.reset-password');
+            Route::delete('admin-management/{admin}', [AdminManagementController::class, 'destroy'])->name('admin-management.destroy');
+        });
+    });
+});
+
