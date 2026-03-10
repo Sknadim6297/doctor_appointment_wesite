@@ -257,6 +257,10 @@ body {
     background: #ffffff;
 }
 
+.login-input--with-icon {
+    padding-left: 2rem;
+}
+
 .login-input:focus {
     border-color: #3b82f6;
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
@@ -274,14 +278,26 @@ body {
 }
 
 .modal-content {
+    display: flex;
+    flex-direction: column;
     border: 1px solid #dbe4f2;
     border-radius: 1rem;
     background: #ffffff;
     box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+    max-height: 90vh;
+    overflow: hidden;
+}
+
+.modal-content > form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
 }
 
 .modal-header,
 .modal-footer {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -310,7 +326,16 @@ body {
 }
 
 .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
     padding: 1.1rem 1.25rem;
+    overflow-y: auto;
+}
+
+.modal-body > fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
 }
 
 .control-group {
@@ -454,8 +479,7 @@ body {
 
 @media (max-width: 768px) {
     .modal-content {
-        max-height: 88vh;
-        overflow-y: auto;
+        max-height: 92vh;
     }
 
     .modal-header,

@@ -30,7 +30,7 @@
                 <label for="email" class="mb-1.5 block text-sm font-semibold text-slate-700">Email</label>
                 <div class="relative">
                     <i class="ri-mail-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                    <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus class="login-input pl-10" placeholder="admin@mediforum.com">
+                    <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus class="login-input login-input--with-icon" placeholder="admin@mediforum.com">
                 </div>
             </div>
 
@@ -38,7 +38,7 @@
                 <label for="password" class="mb-1.5 block text-sm font-semibold text-slate-700">Password</label>
                 <div class="relative">
                     <i class="ri-lock-2-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                    <input id="password" name="password" type="password" required class="login-input pl-10" placeholder="Enter password">
+                    <input id="password" name="password" type="password" required class="login-input login-input--with-icon" placeholder="Enter password">
                 </div>
             </div>
 
