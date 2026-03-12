@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AdminRole;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,7 +23,7 @@ class AdminMiddleware
 
         $user = Auth::user();
 
-        if (!in_array($user->role, ['admin', 'super_admin'])) {
+        if (!in_array($user->role, $this->allowedAdminRoles(), true)) {
             Auth::logout();
             return redirect()->route('admin.login')->withErrors(['error' => 'Unauthorized access.']);
         }
@@ -33,5 +34,12 @@ class AdminMiddleware
         }
 
         return $next($request);
+    }
+
+    private function allowedAdminRoles(): array
+    {
+        $roleKeys = AdminRole::query()->pluck('role_key')->all();
+
+        return array_values(array_unique(array_merge(['super_admin', 'admin'], $roleKeys)));
     }
 }

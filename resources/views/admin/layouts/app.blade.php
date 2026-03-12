@@ -60,7 +60,7 @@
                     </ul>
                 </div>
 
-                <div class="treeview">
+              <div class="treeview">
                     <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.admin-management.*') ? 'active' : '' }}" @click="toggleMenu('emp')">
                         <span class="flex items-center gap-3">
                             <i class="ri-user-settings-line"></i>
@@ -70,37 +70,34 @@
                     </button>
                     <ul class="tree-menu" x-show="empOpen" x-transition.opacity x-cloak>
                         @if(auth()->user()->role === 'super_admin')
+                            @php
+                                $subAdminCount = \App\Models\User::whereIn('role', \App\Models\AdminRole::query()->pluck('role_key'))->count();
+                            @endphp
                             <li>
-                                <a href="{{ route('admin.admin-management.index') }}" class="has-badge {{ request()->routeIs('admin.admin-management.*') ? 'active' : '' }}">
-                                    <span class="submenu-left"><i class="ri-list-check-2"></i><span>Sub Admin Management</span></span>
-                                    <small class="menu-badge">2</small>
+                                <a href="{{ route('admin.admin-management.index') }}" class="has-badge {{ request()->routeIs('admin.admin-management.index') || request()->routeIs('admin.admin-management.create') || request()->routeIs('admin.admin-management.edit') ? 'active' : '' }}">
+                                    <span class="submenu-left"><i class="ri-list-check-2"></i><span>Sub-Admin Management</span></span>
+                                    <small class="menu-badge">{{ $subAdminCount }}</small>
                                 </a>
                             </li>
-                            <li><a href="{{ route('admin.admin-management.index') }}" class="{{ request()->routeIs('admin.admin-management.*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Role Management</span></span></a></li>
+                            <li><a href="{{ route('admin.admin-management.roles') }}" class="{{ request()->routeIs('admin.admin-management.roles') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Role Management</span></span></a></li>
                         @else
-                            <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Sub Admin Management</span></span></a></li>
+                            <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Sub-Admin Management</span></span></a></li>
                             <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Role Management</span></span></a></li>
                         @endif
                     </ul>
                 </div>
 
                 <div class="treeview">
-                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.enrollment') || request()->routeIs('admin.doctors') ? 'active' : '' }}" @click="toggleMenu('doctor')">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.enrollment') || request()->routeIs('admin.enrollment.*') ? 'active' : '' }}" @click="toggleMenu('doctor')">
                         <span class="flex items-center gap-3">
-                            <i class="ri-refresh-line"></i>
+                            <i class="ri-stethoscope-line"></i>
                             <span>Doctor Management</span>
                         </span>
                         <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': doctorOpen }"></i>
                     </button>
                     <ul class="tree-menu" x-show="doctorOpen" x-transition.opacity x-cloak>
-                        <li><a href="{{ route('admin.enrollment') }}" class="{{ request()->routeIs('admin.enrollment') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Enrollment Entry</span></span></a></li>
-                        <li>
-                            <a href="{{ route('admin.doctors') }}" class="has-badge {{ request()->routeIs('admin.doctors') ? 'active' : '' }}">
-                                <span class="submenu-left"><i class="ri-list-check-2"></i><span>Doctor List</span></span>
-                                <small class="menu-badge bg-red-500">954</small>
-                            </a>
-                        </li>
-                        <li><a href="{{ route('admin.doctors') }}" class="{{ request()->routeIs('admin.doctors') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Membership nos.</span></span></a></li>
+                        <li><a href="{{ route('admin.enrollment.create') }}" class="{{ request()->routeIs('admin.enrollment.create') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-user-add-line"></i><span>Enrollment Entry</span></span></a></li>
+                        <li><a href="{{ route('admin.enrollment') }}" class="{{ request()->routeIs('admin.enrollment') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Doctor List</span></span></a></li>
                     </ul>
                 </div>
 
@@ -108,14 +105,6 @@
                     <i class="ri-bar-chart-2-line"></i>
                     <span>Reports</span>
                 </a>
-
-                <form method="POST" action="{{ route('admin.logout') }}" class="pt-2">
-                    @csrf
-                    <button type="submit" class="nav-link logout w-full">
-                        <i class="ri-logout-box-r-line"></i>
-                        <span>Logout</span>
-                    </button>
-                </form>
             </nav>
         </aside>
 

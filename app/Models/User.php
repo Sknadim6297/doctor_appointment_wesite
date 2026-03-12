@@ -19,10 +19,19 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'first_name',
+        'last_name',
         'email',
         'password',
         'role',
         'is_active',
+        'salary',
+        'employee_no',
+        'phone',
+        'aadhaar_no',
+        'pan_no',
+        'dob',
+        'profile_pic',
     ];
 
     /**
@@ -46,6 +55,8 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'salary' => 'decimal:2',
+            'dob' => 'date',
         ];
     }
 }

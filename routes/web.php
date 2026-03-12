@@ -4,10 +4,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\AdminManagementController;
+use App\Http\Controllers\Admin\DoctorController;
 use App\Http\Controllers\Admin\SpecializationController;
 use App\Http\Controllers\Admin\NormalPlanController;
 use App\Http\Controllers\Admin\HighRiskPlanController;
 use App\Http\Controllers\Admin\ComboPlanController;
+use App\Http\Controllers\Admin\EnrollmentController;
 use App\Http\Controllers\Admin\InsurancePlanController;
 
 Route::get('/', function () {
@@ -29,15 +31,27 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Dashboard
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         
-        // Doctors Management
-        Route::get('doctors', function () {
-            return view('admin.doctors.index');
-        })->name('doctors');
-        
         // Enrollment Management
-        Route::get('enrollment', function () {
-            return view('admin.enrollment.index');
-        })->name('enrollment');
+        Route::get('enrollment', [EnrollmentController::class, 'index'])->name('enrollment');
+        Route::get('enrollment/create', [EnrollmentController::class, 'create'])->name('enrollment.create');
+        Route::post('enrollment', [EnrollmentController::class, 'store'])->name('enrollment.store');
+
+        // Doctor Management
+        Route::get('doctors', [DoctorController::class, 'index'])->name('doctors.index');
+        Route::get('doctors/incomplete-documents', [DoctorController::class, 'incompleteDocuments'])->name('doctors.incomplete-documents');
+        Route::get('doctors/csv-report', [DoctorController::class, 'csvReport'])->name('doctors.csv-report');
+        Route::get('doctors/{doctor}', [DoctorController::class, 'show'])->name('doctors.show');
+        Route::post('doctors/{doctor}/send-mail', [DoctorController::class, 'sendMail'])->name('doctors.send-mail');
+        Route::post('doctors/{doctor}/send-sms', [DoctorController::class, 'sendSms'])->name('doctors.send-sms');
+        Route::post('doctors/{doctor}/resend-bond', [DoctorController::class, 'resendBond'])->name('doctors.resend-bond');
+        Route::post('doctors/{doctor}/resend-receipt', [DoctorController::class, 'resendMoneyReceipt'])->name('doctors.resend-receipt');
+        Route::post('doctors/{doctor}/toggle-auto-email', [DoctorController::class, 'toggleAutoEmail'])->name('doctors.toggle-auto-email');
+        Route::post('doctors/{doctor}/toggle-auto-sms', [DoctorController::class, 'toggleAutoSms'])->name('doctors.toggle-auto-sms');
+
+        // AJAX: location lookups
+        Route::get('ajax/states/{countryId}', [EnrollmentController::class, 'getStates'])->name('ajax.states');
+        Route::get('ajax/cities/{stateId}', [EnrollmentController::class, 'getCities'])->name('ajax.cities');
+        Route::get('ajax/coverage', [EnrollmentController::class, 'getCoverage'])->name('ajax.coverage');
         
         // Money Receipts
         Route::get('receipts', function () {
@@ -97,9 +111,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Super Admin Only Routes
         Route::middleware('super_admin')->group(function () {
             Route::get('admin-management', [AdminManagementController::class, 'index'])->name('admin-management.index');
+            Route::get('admin-management/roles', [AdminManagementController::class, 'roles'])->name('admin-management.roles');
+            Route::post('admin-management/roles', [AdminManagementController::class, 'storeRole'])->name('admin-management.roles.store');
+            Route::put('admin-management/roles/{role}', [AdminManagementController::class, 'updateRole'])->name('admin-management.roles.update');
             Route::get('admin-management/create', [AdminManagementController::class, 'create'])->name('admin-management.create');
             Route::post('admin-management', [AdminManagementController::class, 'store'])->name('admin-management.store');
             Route::get('admin-management/{admin}/edit', [AdminManagementController::class, 'edit'])->name('admin-management.edit');
+            Route::get('admin-management/{admin}/privileges', [AdminManagementController::class, 'privileges'])->name('admin-management.privileges');
+            Route::post('admin-management/{admin}/privileges', [AdminManagementController::class, 'updatePrivileges'])->name('admin-management.privileges.update');
+            Route::get('admin-management/{admin}/login-log', [AdminManagementController::class, 'loginLog'])->name('admin-management.login-log');
             Route::put('admin-management/{admin}', [AdminManagementController::class, 'update'])->name('admin-management.update');
             Route::post('admin-management/{admin}/reset-password', [AdminManagementController::class, 'resetPassword'])->name('admin-management.reset-password');
             Route::delete('admin-management/{admin}', [AdminManagementController::class, 'destroy'])->name('admin-management.destroy');
