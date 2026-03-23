@@ -71,14 +71,18 @@
                 </div>
 
                 <div>
-                    <label for="role" class="mb-2 block text-sm font-medium text-gray-700">Role <span class="text-red-500">*</span></label>
-                    <select id="role" name="role" required class="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-indigo-500 @error('role') border-red-500 @enderror">
-                        <option value="">--Select role--</option>
+                    <label class="mb-2 block text-sm font-medium text-gray-700">Roles <span class="text-red-500">*</span></label>
+                    @php($selectedRoleKeys = old('role_keys', $admin->adminRoleKeys()))
+                    <div class="space-y-2 rounded-lg border border-gray-300 px-4 py-3 @error('role_keys') border-red-500 @enderror">
                         @foreach($roleOptions as $role)
-                            <option value="{{ $role->role_key }}" {{ old('role', $admin->role) === $role->role_key ? 'selected' : '' }}>{{ $role->role_title }}</option>
+                            <label class="flex items-center gap-2 text-sm text-gray-700">
+                                <input type="checkbox" name="role_keys[]" value="{{ $role->role_key }}" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" {{ in_array($role->role_key, $selectedRoleKeys, true) ? 'checked' : '' }}>
+                                <span>{{ $role->role_title }}</span>
+                            </label>
                         @endforeach
-                    </select>
-                    @error('role')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                    @error('role_keys')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    @error('role_keys.*')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
 
                 <div>
@@ -95,6 +99,49 @@
                     <input type="file" id="profile_pic" name="profile_pic" class="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-indigo-500 @error('profile_pic') border-red-500 @enderror">
                     @error('profile_pic')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
+            </div>
+
+            <div class="mt-8 rounded-2xl border border-slate-200 p-5">
+                <div class="mb-4">
+                    <h4 class="text-lg font-semibold text-slate-900">Module Permissions</h4>
+                    <p class="mt-1 text-sm text-slate-500">Adjust the sub-admin permissions at module and action level.</p>
+                </div>
+
+                @php($grantedPrivilegeKeys = old('privilege_keys', $selectedPrivilegeKeys))
+
+                <div class="space-y-5">
+                    @foreach($privilegeCatalog as $group)
+                        <div class="rounded-xl border border-slate-200">
+                            <div class="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800">{{ $group['group_title'] }}</div>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                    <thead class="bg-white text-left text-slate-500">
+                                        <tr>
+                                            <th class="px-4 py-3 font-medium">Module</th>
+                                            <th class="px-4 py-3 font-medium">View</th>
+                                            <th class="px-4 py-3 font-medium">Edit</th>
+                                            <th class="px-4 py-3 font-medium">Delete</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-200 bg-white">
+                                        @foreach($group['pages'] as $page)
+                                            <tr>
+                                                <td class="px-4 py-3 font-medium text-slate-800">{{ $page['title'] }}</td>
+                                                @foreach($page['actions'] as $action)
+                                                    <td class="px-4 py-3">
+                                                        <input type="checkbox" name="privilege_keys[]" value="{{ $action['compound_key'] }}" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" {{ in_array($action['compound_key'], $grantedPrivilegeKeys, true) ? 'checked' : '' }}>
+                                                    </td>
+                                                @endforeach
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+                @error('privilege_keys')<p class="mt-3 text-sm text-red-600">{{ $message }}</p>@enderror
+                @error('privilege_keys.*')<p class="mt-3 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
 
             <div class="mt-8 flex items-center justify-end space-x-3">

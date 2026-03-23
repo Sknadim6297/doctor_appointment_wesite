@@ -9,6 +9,7 @@ use App\Models\HighRiskPlan;
 use App\Models\InsurancePlan;
 use App\Models\NormalPlan;
 use App\Models\Specialization;
+use App\Services\ActivityLogService;
 use App\Services\LocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,8 +18,20 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EnrollmentController extends Controller
 {
+    public function __construct(private readonly ActivityLogService $activityLogService)
+    {
+    }
+
     public function index()
     {
+        $this->activityLogService->log(
+            request(),
+            'enrollment',
+            'view',
+            description: 'Viewed enrollment listing.',
+            metadata: request()->only(['renew_type', 'search_month', 'search_year'])
+        );
+
         $renewType = request('renew_type', 'upcoming_renewed');
         $searchMonth = request('search_month');
         $searchYear = request('search_year');
@@ -188,6 +201,8 @@ class EnrollmentController extends Controller
 
     public function create()
     {
+        $this->activityLogService->log(request(), 'enrollment', 'edit', description: 'Opened enrollment creation form.');
+
         $specializations = Specialization::orderBy('name')->get();
         $countries = LocationService::countries();
 
@@ -278,11 +293,114 @@ class EnrollmentController extends Controller
             $validated['city_name'] = $cities[(int) $validated['city']] ?? null;
         }
 
-        Enrollment::create($validated);
+        $enrollment = Enrollment::create($validated);
+
+        if ($enrollment) {
+            $this->activityLogService->log(
+                $request,
+                'enrollment',
+                'create',
+                $enrollment,
+                Auth::user(),
+                'Created a new enrollment record.',
+                [
+                    'doctor_name' => $enrollment->doctor_name,
+                    'membership_no' => $enrollment->customer_id_no,
+                ]
+            );
+        }
 
         return redirect()
             ->route('admin.enrollment')
             ->with('success', 'Enrollment saved successfully.');
+    }
+
+    /**
+     * Show the form for editing the specified enrollment.
+     */
+    public function edit($id)
+    {
+        $enrollment = Enrollment::findOrFail($id);
+
+        $specializations = Specialization::orderBy('name')->get();
+        $countries = LocationService::countries();
+
+        $defaultCountryId = $enrollment->country ?? 101;
+        $defaultStateId = $enrollment->state ?? 41;
+        $defaultCityId = $enrollment->city ?? 5583;
+
+        $states = LocationService::statesByCountry($defaultCountryId);
+        $cities = LocationService::citiesByState($defaultStateId);
+
+        $currentYear = (int) date('Y');
+        $years = range($currentYear, 1950);
+
+        return view('admin.enrollment.create', compact(
+            'specializations',
+            'countries',
+            'states',
+            'cities',
+            'years',
+            'defaultCountryId',
+            'defaultStateId',
+            'defaultCityId'
+        ))->with('enrollment', $enrollment);
+    }
+
+    /**
+     * Update the specified enrollment in storage.
+     */
+    public function update(Request $request, $id)
+    {
+        $enrollment = Enrollment::findOrFail($id);
+
+        $validated = $request->validate([
+            'customer_id_no'         => 'nullable|string|max:100',
+            'money_rc_no'            => 'nullable|string|max:50',
+            'agent_name'             => 'nullable|string|max:200',
+            'agent_phone_no'         => 'nullable|string|max:20',
+            'doctor_name'            => 'required|string|max:200',
+            'doctor_address'         => 'nullable|string|max:500',
+            'country'                => 'nullable|integer',
+            'country_name'           => 'nullable|string|max:100',
+            'state'                  => 'nullable|integer',
+            'state_name'             => 'nullable|string|max:100',
+            'city'                   => 'nullable|integer',
+            'city_name'              => 'nullable|string|max:100',
+            'postcode'               => 'nullable|string|max:20',
+            'mobile1'                => 'nullable|string|max:20',
+            'mobile2'                => 'nullable|string|max:20',
+            'doctor_email'           => 'nullable|email|max:200',
+            'dob'                    => 'nullable|date',
+            'qualification'          => 'nullable|string|max:200',
+            'qualification_year'     => 'nullable|array',
+            'qualification_year.*'   => 'nullable|integer',
+            'medical_registration_no'=> 'nullable|string|max:100',
+            'year_of_reg'            => 'nullable|integer',
+            'clinic_address'         => 'nullable|string|max:500',
+            'aadhar_card_no'         => 'nullable|string|max:20',
+            'pan_card_no'            => 'nullable|string|max:20',
+            'specialization_id'      => 'nullable|integer|exists:specializations,id',
+            'payment_mode'           => 'nullable|string|max:50',
+            'plan'                   => 'nullable|integer|in:1,2,3',
+            'coverage_id'            => 'nullable|integer',
+            'service_amount'         => 'nullable|numeric|min:0',
+            'payment_amount'         => 'nullable|numeric|min:0',
+            'total_amount'           => 'nullable|numeric|min:0',
+            'payment_method'         => 'nullable|integer|in:1,2,3',
+            'payment_cheque'         => 'nullable|string|max:100',
+            'payment_bank_name'      => 'nullable|string|max:200',
+            'payment_branch_name'    => 'nullable|string|max:200',
+            'payment_upi_transaction_id' => 'nullable|string|max:100',
+            'payment_cash_date'      => 'nullable|date',
+            'bond_to_mail'           => 'nullable|in:Y',
+        ]);
+
+        $validated['bond_to_mail'] = isset($validated['bond_to_mail']) && $validated['bond_to_mail'] === 'Y';
+
+        $enrollment->update($validated);
+
+        return redirect()->route('admin.enrollment')->with('success', 'Enrollment updated successfully.');
     }
 
     // ──────────────────────────── AJAX endpoints ─────────────────────────────

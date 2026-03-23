@@ -4,15 +4,23 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdminLoginLog;
-use App\Models\AdminRole;
+use App\Models\User;
+use App\Services\AdminAccessService;
+use App\Services\ClientContextService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class AdminAuthController extends Controller
 {
+    public function __construct(
+        private readonly AdminAccessService $adminAccessService,
+        private readonly ClientContextService $clientContextService
+    ) {
+    }
+
     public function showLoginForm()
     {
-        $allowedRoles = $this->allowedAdminRoles();
+        $allowedRoles = $this->adminAccessService->allowedAdminRoles();
 
         if (Auth::check() && in_array(Auth::user()->role, $allowedRoles, true)) {
             return redirect()->route('admin.dashboard');
@@ -32,10 +40,11 @@ class AdminAuthController extends Controller
         $remember = $request->has('remember');
 
         if (Auth::attempt($credentials, $remember)) {
+            /** @var User $user */
             $user = Auth::user();
-            $allowedRoles = $this->allowedAdminRoles();
+            $allowedRoles = $this->adminAccessService->allowedAdminRoles();
             
-            if (!in_array($user->role, $allowedRoles, true)) {
+            if (!in_array($user->role, $allowedRoles, true) && empty($user->adminRoleKeys())) {
                 Auth::logout();
                 return back()->withErrors(['email' => 'You do not have admin access.']);
             }
@@ -45,14 +54,23 @@ class AdminAuthController extends Controller
                 return back()->withErrors(['email' => 'Your account has been deactivated.']);
             }
 
+            $request->session()->regenerate();
+
+            $this->adminAccessService->syncPrivilegeCatalogForUser($user);
+            $context = $this->clientContextService->fromRequest($request);
+
             AdminLoginLog::create([
                 'user_id' => $user->id,
-                'ip_address' => $request->ip(),
-                'user_agent' => (string) $request->userAgent(),
+                'session_id' => $context['session_id'],
+                'ip_address' => $context['ip_address'],
+                'user_agent' => $context['user_agent'],
+                'device_type' => $context['device_type'],
+                'device_name' => $context['device_name'],
+                'browser_name' => $context['browser_name'],
+                'browser_version' => $context['browser_version'],
                 'logged_in_at' => now(),
             ]);
 
-            $request->session()->regenerate();
             return redirect()->intended(route('admin.dashboard'));
         }
 
@@ -63,17 +81,27 @@ class AdminAuthController extends Controller
 
     public function logout(Request $request)
     {
+        /** @var User|null $user */
+        $user = Auth::user();
+        $sessionId = $request->hasSession() ? $request->session()->getId() : null;
+
+        if ($user && $sessionId) {
+            AdminLoginLog::query()
+                ->where('user_id', $user->id)
+                ->where('session_id', $sessionId)
+                ->whereNull('logged_out_at')
+                ->latest('logged_in_at')
+                ->limit(1)
+                ->update([
+                    'logged_out_at' => now(),
+                    'updated_at' => now(),
+                ]);
+        }
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         return redirect()->route('admin.login');
-    }
-
-    private function allowedAdminRoles(): array
-    {
-        $roleKeys = AdminRole::query()->pluck('role_key')->all();
-
-        return array_values(array_unique(array_merge(['super_admin', 'admin'], $roleKeys)));
     }
 }
 

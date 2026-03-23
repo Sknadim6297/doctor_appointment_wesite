@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,9 +21,10 @@ class SuperAdminMiddleware
             return redirect()->route('admin.login');
         }
 
+        /** @var User $user */
         $user = Auth::user();
 
-        if ($user->role !== 'super_admin') {
+        if (!$user->hasAdminRole('super_admin')) {
             abort(403, 'Unauthorized action. Super Admin access required.');
         }
 

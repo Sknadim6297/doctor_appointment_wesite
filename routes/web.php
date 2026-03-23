@@ -32,81 +32,84 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         
         // Enrollment Management
-        Route::get('enrollment', [EnrollmentController::class, 'index'])->name('enrollment');
-        Route::get('enrollment/create', [EnrollmentController::class, 'create'])->name('enrollment.create');
-        Route::post('enrollment', [EnrollmentController::class, 'store'])->name('enrollment.store');
+        Route::get('enrollment', [EnrollmentController::class, 'index'])->middleware('admin.privilege:enrollment,view')->name('enrollment');
+        Route::get('enrollment/create', [EnrollmentController::class, 'create'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.create');
+        Route::post('enrollment', [EnrollmentController::class, 'store'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.store');
+        // Edit / Update enrollment (doctor)
+        Route::get('enrollment/{enrollment}/edit', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.edit');
+        Route::put('enrollment/{enrollment}', [EnrollmentController::class, 'update'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.update');
 
         // Doctor Management
-        Route::get('doctors', [DoctorController::class, 'index'])->name('doctors.index');
-        Route::get('doctors/incomplete-documents', [DoctorController::class, 'incompleteDocuments'])->name('doctors.incomplete-documents');
-        Route::get('doctors/csv-report', [DoctorController::class, 'csvReport'])->name('doctors.csv-report');
-        Route::get('doctors/{doctor}', [DoctorController::class, 'show'])->name('doctors.show');
-        Route::post('doctors/{doctor}/send-mail', [DoctorController::class, 'sendMail'])->name('doctors.send-mail');
-        Route::post('doctors/{doctor}/send-sms', [DoctorController::class, 'sendSms'])->name('doctors.send-sms');
-        Route::post('doctors/{doctor}/resend-bond', [DoctorController::class, 'resendBond'])->name('doctors.resend-bond');
-        Route::post('doctors/{doctor}/resend-receipt', [DoctorController::class, 'resendMoneyReceipt'])->name('doctors.resend-receipt');
-        Route::post('doctors/{doctor}/toggle-auto-email', [DoctorController::class, 'toggleAutoEmail'])->name('doctors.toggle-auto-email');
-        Route::post('doctors/{doctor}/toggle-auto-sms', [DoctorController::class, 'toggleAutoSms'])->name('doctors.toggle-auto-sms');
+        Route::get('doctors', [DoctorController::class, 'index'])->middleware('admin.privilege:doctors,view')->name('doctors.index');
+        Route::get('doctors/incomplete-documents', [DoctorController::class, 'incompleteDocuments'])->middleware('admin.privilege:doctors,view')->name('doctors.incomplete-documents');
+        Route::get('doctors/csv-report', [DoctorController::class, 'csvReport'])->middleware('admin.privilege:doctors,view')->name('doctors.csv-report');
+        Route::get('doctors/{doctor}', [DoctorController::class, 'show'])->middleware('admin.privilege:doctors,view')->name('doctors.show');
+        Route::post('doctors/{doctor}/send-mail', [DoctorController::class, 'sendMail'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-mail');
+        Route::post('doctors/{doctor}/send-sms', [DoctorController::class, 'sendSms'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-sms');
+        Route::post('doctors/{doctor}/resend-bond', [DoctorController::class, 'resendBond'])->middleware('admin.privilege:doctors,edit')->name('doctors.resend-bond');
+        Route::post('doctors/{doctor}/resend-receipt', [DoctorController::class, 'resendMoneyReceipt'])->middleware('admin.privilege:doctors,edit')->name('doctors.resend-receipt');
+        Route::post('doctors/{doctor}/toggle-auto-email', [DoctorController::class, 'toggleAutoEmail'])->middleware('admin.privilege:doctors,edit')->name('doctors.toggle-auto-email');
+        Route::post('doctors/{doctor}/toggle-auto-sms', [DoctorController::class, 'toggleAutoSms'])->middleware('admin.privilege:doctors,edit')->name('doctors.toggle-auto-sms');
 
         // AJAX: location lookups
-        Route::get('ajax/states/{countryId}', [EnrollmentController::class, 'getStates'])->name('ajax.states');
-        Route::get('ajax/cities/{stateId}', [EnrollmentController::class, 'getCities'])->name('ajax.cities');
-        Route::get('ajax/coverage', [EnrollmentController::class, 'getCoverage'])->name('ajax.coverage');
+        Route::get('ajax/states/{countryId}', [EnrollmentController::class, 'getStates'])->middleware('admin.privilege:enrollment,edit')->name('ajax.states');
+        Route::get('ajax/cities/{stateId}', [EnrollmentController::class, 'getCities'])->middleware('admin.privilege:enrollment,edit')->name('ajax.cities');
+        Route::get('ajax/coverage', [EnrollmentController::class, 'getCoverage'])->middleware('admin.privilege:enrollment,edit')->name('ajax.coverage');
         
         // Money Receipts
         Route::get('receipts', function () {
             return view('admin.receipts.index');
-        })->name('receipts');
+        })->middleware('admin.privilege:receipts,view')->name('receipts');
         
         // Doctor Cases
         Route::get('cases', function () {
             return view('admin.cases.index');
-        })->name('cases');
+        })->middleware('admin.privilege:cases,view')->name('cases');
         
         // Lapse List
         Route::get('lapse', function () {
             return view('admin.lapse.index');
-        })->name('lapse');
+        })->middleware('admin.privilege:lapse,view')->name('lapse');
         
         // Normal Plans
-        Route::get('plans', [NormalPlanController::class, 'index'])->name('plans');
-        Route::post('plans', [NormalPlanController::class, 'store'])->name('plans.store');
-        Route::put('plans/{plan}', [NormalPlanController::class, 'update'])->name('plans.update');
-        Route::delete('plans/{plan}', [NormalPlanController::class, 'destroy'])->name('plans.destroy');
+        Route::get('plans', [NormalPlanController::class, 'index'])->middleware('admin.privilege:normal_plans,view')->name('plans');
+        Route::post('plans', [NormalPlanController::class, 'store'])->middleware('admin.privilege:normal_plans,edit')->name('plans.store');
+        Route::put('plans/{plan}', [NormalPlanController::class, 'update'])->middleware('admin.privilege:normal_plans,edit')->name('plans.update');
+        Route::delete('plans/{plan}', [NormalPlanController::class, 'destroy'])->middleware('admin.privilege:normal_plans,delete')->name('plans.destroy');
 
         // High Risk Plans
-        Route::get('high-risk-plans', [HighRiskPlanController::class, 'index'])->name('high-risk-plans');
-        Route::post('high-risk-plans', [HighRiskPlanController::class, 'store'])->name('high-risk-plans.store');
-        Route::put('high-risk-plans/{highRiskPlan}', [HighRiskPlanController::class, 'update'])->name('high-risk-plans.update');
-        Route::delete('high-risk-plans/{highRiskPlan}', [HighRiskPlanController::class, 'destroy'])->name('high-risk-plans.destroy');
+        Route::get('high-risk-plans', [HighRiskPlanController::class, 'index'])->middleware('admin.privilege:high_risk_plans,view')->name('high-risk-plans');
+        Route::post('high-risk-plans', [HighRiskPlanController::class, 'store'])->middleware('admin.privilege:high_risk_plans,edit')->name('high-risk-plans.store');
+        Route::put('high-risk-plans/{highRiskPlan}', [HighRiskPlanController::class, 'update'])->middleware('admin.privilege:high_risk_plans,edit')->name('high-risk-plans.update');
+        Route::delete('high-risk-plans/{highRiskPlan}', [HighRiskPlanController::class, 'destroy'])->middleware('admin.privilege:high_risk_plans,delete')->name('high-risk-plans.destroy');
 
         // Combo Plans
-        Route::get('combo-plans', [ComboPlanController::class, 'index'])->name('combo-plans');
-        Route::post('combo-plans', [ComboPlanController::class, 'store'])->name('combo-plans.store');
-        Route::put('combo-plans/{comboPlan}', [ComboPlanController::class, 'update'])->name('combo-plans.update');
-        Route::delete('combo-plans/{comboPlan}', [ComboPlanController::class, 'destroy'])->name('combo-plans.destroy');
+        Route::get('combo-plans', [ComboPlanController::class, 'index'])->middleware('admin.privilege:combo_plans,view')->name('combo-plans');
+        Route::post('combo-plans', [ComboPlanController::class, 'store'])->middleware('admin.privilege:combo_plans,edit')->name('combo-plans.store');
+        Route::put('combo-plans/{comboPlan}', [ComboPlanController::class, 'update'])->middleware('admin.privilege:combo_plans,edit')->name('combo-plans.update');
+        Route::delete('combo-plans/{comboPlan}', [ComboPlanController::class, 'destroy'])->middleware('admin.privilege:combo_plans,delete')->name('combo-plans.destroy');
 
         // Insurance Plans
-        Route::get('insurance-plans', [InsurancePlanController::class, 'index'])->name('insurance-plans');
-        Route::post('insurance-plans', [InsurancePlanController::class, 'store'])->name('insurance-plans.store');
-        Route::put('insurance-plans/{insurancePlan}', [InsurancePlanController::class, 'update'])->name('insurance-plans.update');
-        Route::delete('insurance-plans/{insurancePlan}', [InsurancePlanController::class, 'destroy'])->name('insurance-plans.destroy');
+        Route::get('insurance-plans', [InsurancePlanController::class, 'index'])->middleware('admin.privilege:insurance_plans,view')->name('insurance-plans');
+        Route::post('insurance-plans', [InsurancePlanController::class, 'store'])->middleware('admin.privilege:insurance_plans,edit')->name('insurance-plans.store');
+        Route::put('insurance-plans/{insurancePlan}', [InsurancePlanController::class, 'update'])->middleware('admin.privilege:insurance_plans,edit')->name('insurance-plans.update');
+        Route::delete('insurance-plans/{insurancePlan}', [InsurancePlanController::class, 'destroy'])->middleware('admin.privilege:insurance_plans,delete')->name('insurance-plans.destroy');
 
         // Specialization
-        Route::get('specialization', [SpecializationController::class, 'index'])->name('specialization');
-        Route::post('specialization', [SpecializationController::class, 'store'])->name('specialization.store');
-        Route::put('specialization/{specialization}', [SpecializationController::class, 'update'])->name('specialization.update');
-        Route::delete('specialization/{specialization}', [SpecializationController::class, 'destroy'])->name('specialization.destroy');
+        Route::get('specialization', [SpecializationController::class, 'index'])->middleware('admin.privilege:specializations,view')->name('specialization');
+        Route::post('specialization', [SpecializationController::class, 'store'])->middleware('admin.privilege:specializations,edit')->name('specialization.store');
+        Route::put('specialization/{specialization}', [SpecializationController::class, 'update'])->middleware('admin.privilege:specializations,edit')->name('specialization.update');
+        Route::delete('specialization/{specialization}', [SpecializationController::class, 'destroy'])->middleware('admin.privilege:specializations,delete')->name('specialization.destroy');
         
         // Doctor Posts
         Route::get('posts', function () {
             return view('admin.posts.index');
-        })->name('posts');
+        })->middleware('admin.privilege:posts,view')->name('posts');
         
         // Reports
         Route::get('reports', function () {
             return view('admin.reports.index');
-        })->name('reports');
+        })->middleware('admin.privilege:reports,view')->name('reports');
         
         // Super Admin Only Routes
         Route::middleware('super_admin')->group(function () {
@@ -120,6 +123,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('admin-management/{admin}/privileges', [AdminManagementController::class, 'privileges'])->name('admin-management.privileges');
             Route::post('admin-management/{admin}/privileges', [AdminManagementController::class, 'updatePrivileges'])->name('admin-management.privileges.update');
             Route::get('admin-management/{admin}/login-log', [AdminManagementController::class, 'loginLog'])->name('admin-management.login-log');
+            Route::get('admin-management/{admin}/activity-log', [AdminManagementController::class, 'activityLog'])->name('admin-management.activity-log');
             Route::put('admin-management/{admin}', [AdminManagementController::class, 'update'])->name('admin-management.update');
             Route::post('admin-management/{admin}/reset-password', [AdminManagementController::class, 'resetPassword'])->name('admin-management.reset-password');
             Route::delete('admin-management/{admin}', [AdminManagementController::class, 'destroy'])->name('admin-management.destroy');

@@ -213,8 +213,23 @@
                                 <span class="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">No Mobile</span>
                             @endif
                         </td>
-                        <td>
-                            <a href="{{ route('admin.enrollment.create') }}" class="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200">View</a>
+                        <td class="actions-cell">
+                            <div class="flex flex-wrap gap-1">
+                                <a href="{{ route('admin.doctors.show', $enr->id) }}" class="renew-action bg-emerald-600" title="View" onclick="event.stopPropagation();">
+                                    <i class="ri-eye-line"></i>
+                                </a>
+                                <a href="{{ route('admin.enrollment.edit', $enr->id) }}" class="renew-action bg-slate-700" title="Edit" onclick="event.stopPropagation();">
+                                    <i class="ri-pencil-line"></i>
+                                </a>
+                                <a target="_blank" href="{{ route('admin.doctors.show', $enr->id) }}?tab=doctor_documents" class="renew-action bg-blue-600" title="Document" onclick="event.stopPropagation();">
+                                    <i class="ri-file-line"></i>
+                                </a>
+                                <button type="button" class="renew-action bg-red-600" title="Renew" onclick="event.stopPropagation(); renewDoctor({{ $enr->id }})">R</button>
+                                <button type="button" class="renew-action bg-cyan-600" title="Send mail" onclick="event.stopPropagation(); sendMail({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-mail-line"></i></button>
+                                <button type="button" class="renew-action bg-sky-600" title="Send SMS" onclick="event.stopPropagation(); sendSms({{ $enr->id }}, '{{ $enr->mobile1 }}')"><i class="ri-message-2-line"></i></button>
+                                <button type="button" class="renew-action bg-green-700" title="Resend bond" onclick="event.stopPropagation(); resendBond({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-send-plane-line"></i></button>
+                                <button type="button" class="renew-action bg-indigo-600" title="Resend money receipt" onclick="event.stopPropagation(); resendReceipt({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-mail-send-line"></i></button>
+                            </div>
                         </td>
                     </tr>
                 @empty
@@ -274,4 +289,58 @@
         <div class="mt-4">{{ $enrollments->links() }}</div>
     @endif
 </div>
+
+<script>
+function renewDoctor(doctorId) {
+    if (confirm('Are you sure you want to renew this doctor?')) {
+        alert('Renewal functionality to be implemented');
+    }
+}
+
+function sendMail(doctorId, email) {
+    if (!email) {
+        alert('No email address on file for this doctor.');
+        return;
+    }
+    fetch(`/admin/doctors/${doctorId}/send-mail`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(r => r.json())
+    .then(data => alert(data.message))
+    .catch(err => alert('Error: ' + err.message));
+}
+
+function sendSms(doctorId, phone) {
+    if (!phone) {
+        alert('No phone number on file for this doctor.');
+        return;
+    }
+    fetch(`/admin/doctors/${doctorId}/send-sms`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(r => r.json())
+    .then(data => alert(data.message))
+    .catch(err => alert('Error: ' + err.message));
+}
+
+function resendBond(doctorId, email) {
+    if (!email) { alert('No email address on file for this doctor.'); return; }
+    fetch(`/admin/doctors/${doctorId}/resend-bond`, { method: 'POST', headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, 'Content-Type': 'application/json' } })
+    .then(r => r.json()).then(data => alert(data.message)).catch(err => alert('Error: ' + err.message));
+}
+
+function resendReceipt(doctorId, email) {
+    if (!email) { alert('No email address on file for this doctor.'); return; }
+    fetch(`/admin/doctors/${doctorId}/resend-receipt`, { method: 'POST', headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, 'Content-Type': 'application/json' } })
+    .then(r => r.json()).then(data => alert(data.message)).catch(err => alert('Error: ' + err.message));
+}
+</script>
 @endsection

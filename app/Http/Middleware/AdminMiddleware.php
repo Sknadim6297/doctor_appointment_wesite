@@ -2,7 +2,8 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\AdminRole;
+use App\Models\User;
+use App\Services\AdminAccessService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -10,6 +11,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AdminMiddleware
 {
+    public function __construct(private readonly AdminAccessService $adminAccessService)
+    {
+    }
+
     /**
      * Handle an incoming request.
      *
@@ -21,9 +26,10 @@ class AdminMiddleware
             return redirect()->route('admin.login');
         }
 
+        /** @var User $user */
         $user = Auth::user();
 
-        if (!in_array($user->role, $this->allowedAdminRoles(), true)) {
+        if (!in_array($user->role, $this->adminAccessService->allowedAdminRoles(), true) && empty($user->adminRoleKeys())) {
             Auth::logout();
             return redirect()->route('admin.login')->withErrors(['error' => 'Unauthorized access.']);
         }
@@ -34,12 +40,5 @@ class AdminMiddleware
         }
 
         return $next($request);
-    }
-
-    private function allowedAdminRoles(): array
-    {
-        $roleKeys = AdminRole::query()->pluck('role_key')->all();
-
-        return array_values(array_unique(array_merge(['super_admin', 'admin'], $roleKeys)));
     }
 }

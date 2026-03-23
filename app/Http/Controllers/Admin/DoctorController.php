@@ -5,16 +5,32 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Enrollment;
 use App\Models\Specialization;
+use App\Services\ActivityLogService;
+use App\Services\SecurityAlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DoctorController extends Controller
 {
+    public function __construct(
+        private readonly ActivityLogService $activityLogService,
+        private readonly SecurityAlertService $securityAlertService
+    ) {
+    }
+
     /**
      * Display a listing of doctors.
      */
     public function index(Request $request)
     {
+        $this->activityLogService->log(
+            $request,
+            'doctors',
+            'view',
+            description: 'Viewed doctor listing.',
+            metadata: $request->only(['search', 'specialization_id', 'plan', 'renewal_status'])
+        );
+
         $query = Enrollment::query()->with('specialization')->orderByDesc('created_at');
 
         // Filter by search term (name, email, phone, membership)
@@ -67,7 +83,24 @@ class DoctorController extends Controller
      */
     public function show($id)
     {
-        $doctor = Enrollment::with('specialization')->findOrFail($id);
+        $doctor = Enrollment::with(['specialization', 'creator'])->findOrFail($id);
+
+        $this->activityLogService->log(
+            request(),
+            'doctors',
+            'view',
+            $doctor,
+            $doctor->creator,
+            'Viewed doctor details.',
+            [
+                'doctor_name' => $doctor->doctor_name,
+                'membership_no' => $doctor->customer_id_no,
+            ]
+        );
+
+        if ($doctor->creator) {
+            $this->securityAlertService->notifySensitiveEnrollmentAccess(request(), $doctor, $doctor->creator);
+        }
 
         // Calculate renewal dates
         $enrollmentDate = $doctor->created_at;
@@ -191,6 +224,16 @@ class DoctorController extends Controller
         $newStatus = $request->boolean('enabled');
         $doctor->update(['bond_to_mail' => $newStatus]);
 
+        $this->activityLogService->log(
+            $request,
+            'doctors',
+            'edit',
+            $doctor,
+            $doctor->creator,
+            'Updated doctor auto email status.',
+            ['enabled' => $newStatus]
+        );
+
         return response()->json([
             'success' => true,
             'message' => $newStatus ? 'Auto email enabled' : 'Auto email disabled',
@@ -208,6 +251,16 @@ class DoctorController extends Controller
         // Assuming there's a field to track auto SMS - adjust as needed
         // For now, we'll use a similar flag or create one in migration
         $doctor->update(['auto_sms_enabled' => $newStatus]);
+
+        $this->activityLogService->log(
+            $request,
+            'doctors',
+            'edit',
+            $doctor,
+            $doctor->creator,
+            'Updated doctor auto SMS status.',
+            ['enabled' => $newStatus]
+        );
 
         return response()->json([
             'success' => true,

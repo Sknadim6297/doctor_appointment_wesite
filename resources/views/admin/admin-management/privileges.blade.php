@@ -35,6 +35,8 @@
                     <tr>
                         <th></th>
                         <th>SL No.</th>
+                        <th>Module</th>
+                        <th>Permission</th>
                         <th>Status</th>
                         <th>Page Title</th>
                     </tr>
@@ -43,30 +45,34 @@
                     @php $sl = 1; @endphp
                     @foreach($groupedPrivileges as $group)
                         <tr>
-                            <td colspan="4" class="bg-slate-200 px-3 py-2 text-left font-semibold text-slate-800">{{ $group['group_title'] }}</td>
+                            <td colspan="6" class="bg-slate-200 px-3 py-2 text-left font-semibold text-slate-800">{{ $group['group_title'] }}</td>
                         </tr>
 
-                        @foreach($group['items'] as $item)
-                            <tr>
-                                <td style="width:1px">
-                                    <input
-                                        type="checkbox"
-                                        name="selected_ids[]"
-                                        value="{{ $item->id }}"
-                                        class="chtest_test rounded border-slate-300"
-                                    >
-                                </td>
-                                <td><b>{{ $sl }}</b></td>
-                                <td style="width:1px">
-                                    @if($item->is_allowed)
-                                        <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">Allowed</span>
-                                    @else
-                                        <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Disallowed</span>
-                                    @endif
-                                </td>
-                                <td>{{ $item->page_title }}</td>
-                            </tr>
-                            @php $sl++; @endphp
+                        @foreach($group['pages'] as $page)
+                            @foreach($page['items'] as $item)
+                                <tr>
+                                    <td style="width:1px">
+                                        <input
+                                            type="checkbox"
+                                            name="selected_ids[]"
+                                            value="{{ $item->id }}"
+                                            class="chtest_test rounded border-slate-300"
+                                        >
+                                    </td>
+                                    <td><b>{{ $sl }}</b></td>
+                                    <td>{{ $group['group_title'] }}</td>
+                                    <td>{{ $item->action_title }}</td>
+                                    <td style="width:1px">
+                                        @if($item->is_allowed)
+                                            <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">Allowed</span>
+                                        @else
+                                            <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Disallowed</span>
+                                        @endif
+                                    </td>
+                                    <td>{{ $page['page_title'] }}</td>
+                                </tr>
+                                @php $sl++; @endphp
+                            @endforeach
                         @endforeach
                     @endforeach
                 </tbody>

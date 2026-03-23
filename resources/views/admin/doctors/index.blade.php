@@ -30,7 +30,7 @@
         border-spacing: 0;
         border: 1px solid #dbe3ee;
         border-radius: 0.85rem;
-        overflow: hidden;
+        overflow: visible;
     }
     .doctor-table thead th {
         background: #0f172a;
@@ -86,6 +86,8 @@
     .doctor-action-btn-sms { background: #0ea5e9; }
     .doctor-action-btn-bond { background: #22c55e; }
     .doctor-action-btn-receipt { background: #8b5cf6; }
+    .doctor-action-btn { min-width: 36px; height: 34px; padding: 0.25rem; }
+    .doctor-table td.actions-cell { overflow: visible; white-space: nowrap; }
 </style>
 
 <div class="section-card">
@@ -166,7 +168,7 @@
                     <th>Renewal Date</th>
                     <th>Status</th>
                     <th>Email / SMS</th>
-                    <th style="width: 280px;">Actions</th>
+                    <th class="actions-col" style="min-width: 340px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -177,7 +179,7 @@
                     @endphp
                     <tr>
                         <td class="font-semibold">{{ $doctors->firstItem() + $loop->index }}</td>
-                        <td>
+                        <td class="actions-cell">
                             <div class="font-semibold text-slate-800">{{ $doctor->doctor_name ?? '—' }}</div>
                             <div class="text-xs text-slate-500">{{ $doctor->mobile1 ?? '—' }}</div>
                         </td>
@@ -229,30 +231,30 @@
                                     title="{{ $doctor->bond_to_mail ? 'Auto email enabled' : 'Auto email disabled' }}"></li>
                             </div>
                         </td>
-                        <td>
+                        <td class="actions-cell">
                             <div class="flex flex-wrap gap-1">
-                                <a href="{{ route('admin.doctors.show', $doctor->id) }}" class="doctor-action-btn doctor-action-btn-view" title="View Details">
+                                <a href="{{ route('admin.doctors.show', $doctor->id) }}" class="doctor-action-btn doctor-action-btn-view" title="View Details" onclick="event.stopPropagation();">
                                     <i class="ri-eye-line"></i>
                                 </a>
-                                <a href="#" class="doctor-action-btn doctor-action-btn-edit" title="Edit">
+                                <a href="{{ route('admin.enrollment.edit', $doctor->id) }}" class="doctor-action-btn doctor-action-btn-edit" title="Edit" onclick="event.stopPropagation();">
                                     <i class="ri-pencil-line"></i>
                                 </a>
-                                <a href="#" class="doctor-action-btn doctor-action-btn-doc" title="Documents">
+                                <a target="_blank" href="{{ route('admin.doctors.show', $doctor->id) }}?tab=doctor_documents" class="doctor-action-btn doctor-action-btn-doc" title="Document" onclick="event.stopPropagation();">
                                     <i class="ri-file-line"></i>
                                 </a>
-                                <button type="button" class="doctor-action-btn doctor-action-btn-renew" title="Renew" onclick="renewDoctor({{ $doctor->id }})">
+                                <button type="button" class="doctor-action-btn doctor-action-btn-renew" title="Renew" onclick="event.stopPropagation(); renewDoctor({{ $doctor->id }})">
                                     <i class="ri-refresh-line"></i>
                                 </button>
-                                <button type="button" class="doctor-action-btn doctor-action-btn-mail" title="Send Email" onclick="sendMail({{ $doctor->id }}, '{{ $doctor->doctor_email }}')">
+                                <button type="button" class="doctor-action-btn doctor-action-btn-mail" title="Send Email" onclick="event.stopPropagation(); sendMail({{ $doctor->id }}, '{{ $doctor->doctor_email }}')">
                                     <i class="ri-mail-line"></i>
                                 </button>
-                                <button type="button" class="doctor-action-btn doctor-action-btn-sms" title="Send SMS" onclick="sendSms({{ $doctor->id }}, '{{ $doctor->mobile1 }}')">
+                                <button type="button" class="doctor-action-btn doctor-action-btn-sms" title="Send SMS" onclick="event.stopPropagation(); sendSms({{ $doctor->id }}, '{{ $doctor->mobile1 }}')">
                                     <i class="ri-message-2-line"></i>
                                 </button>
-                                <button type="button" class="doctor-action-btn doctor-action-btn-bond" title="Resend Bond" onclick="resendBond({{ $doctor->id }}, '{{ $doctor->doctor_email }}')">
+                                <button type="button" class="doctor-action-btn doctor-action-btn-bond" title="Resend Bond" onclick="event.stopPropagation(); resendBond({{ $doctor->id }}, '{{ $doctor->doctor_email }}')">
                                     <i class="ri-send-plane-line"></i>
                                 </button>
-                                <button type="button" class="doctor-action-btn doctor-action-btn-receipt" title="Resend Receipt" onclick="resendReceipt({{ $doctor->id }}, '{{ $doctor->doctor_email }}')">
+                                <button type="button" class="doctor-action-btn doctor-action-btn-receipt" title="Resend Receipt" onclick="event.stopPropagation(); resendReceipt({{ $doctor->id }}, '{{ $doctor->doctor_email }}')">
                                     <i class="ri-mail-send-line"></i>
                                 </button>
                             </div>

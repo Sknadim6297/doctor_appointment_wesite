@@ -49,11 +49,12 @@
                     <th>Profile</th>
                     <th>Name</th>
                     <th>Email</th>
-                    <th>Role</th>
+                    <th>Roles</th>
                     <th>Contact</th>
                     <th>Status</th>
                     <th>User Privileges</th>
                     <th>Login log</th>
+                    <th>Activity Log</th>
                     <th>Created On</th>
                     <th>Action</th>
                 </tr>
@@ -73,7 +74,17 @@
                     </td>
                     <td>{{ strtoupper(trim(($admin->first_name ?? '') . ' ' . ($admin->last_name ?? ''))) ?: strtoupper($admin->name) }}</td>
                     <td>{{ $admin->email }}</td>
-                    <td>{{ $roleMap[$admin->role] ?? ucwords(str_replace('_', ' ', $admin->role)) }}</td>
+                    <td>
+                        @php($adminRoleLabels = collect($admin->roles)->pluck('role_title')->all())
+                        @if(empty($adminRoleLabels) && !empty($admin->role))
+                            @php($adminRoleLabels = [$roleMap[$admin->role] ?? ucwords(str_replace('_', ' ', $admin->role))])
+                        @endif
+                        <div class="flex flex-wrap gap-1">
+                            @foreach($adminRoleLabels as $label)
+                                <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{{ $label }}</span>
+                            @endforeach
+                        </div>
+                    </td>
                     <td>{{ $admin->phone ?: '-' }}</td>
                     <td>
                         @if($admin->is_active)
@@ -91,6 +102,12 @@
                     <td>
                         <a href="{{ route('admin.admin-management.login-log', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-200" title="Login log">
                             <i class="ri-history-line"></i>
+                            <span>View</span>
+                        </a>
+                    </td>
+                    <td>
+                        <a href="{{ route('admin.admin-management.activity-log', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-violet-100 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-200" title="Activity log">
+                            <i class="ri-file-list-3-line"></i>
                             <span>View</span>
                         </a>
                     </td>
@@ -116,7 +133,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="11" class="py-8 text-center text-slate-500">No sub admins found.</td>
+                    <td colspan="12" class="py-8 text-center text-slate-500">No sub admins found.</td>
                 </tr>
                 @endforelse
             </tbody>

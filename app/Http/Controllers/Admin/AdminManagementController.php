@@ -3,21 +3,25 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminActivityLog;
 use App\Models\AdminLoginLog;
 use App\Models\AdminPrivilege;
 use App\Models\AdminRole;
 use App\Models\User;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use App\Services\AdminAccessService;
 
 class AdminManagementController extends Controller
 {
+    public function __construct(private readonly AdminAccessService $adminAccessService)
+    {
+    }
+
     public function index(Request $request)
     {
         $roleOptions = AdminRole::query()
@@ -30,10 +34,15 @@ class AdminManagementController extends Controller
 
         $roleKeys = array_keys($roleMap);
 
-        $adminsQuery = User::query()->where(function (Builder $query) use ($roleKeys) {
+        $adminsQuery = User::query()
+            ->with('roles:id,role_key,role_title')
+            ->where(function (Builder $query) use ($roleKeys) {
             $query->whereIn('role', $roleKeys)
-                ->orWhere('role', 'super_admin');
-        });
+                ->orWhere('role', 'super_admin')
+                ->orWhereHas('roles', function (Builder $roleQuery) use ($roleKeys) {
+                    $roleQuery->whereIn('role_key', $roleKeys);
+                });
+                });
 
         if ($request->get('status') === 'active') {
             $adminsQuery->where('is_active', true);
@@ -45,7 +54,12 @@ class AdminManagementController extends Controller
 
         $selectedRole = (string) $request->query('role', '');
         if ($selectedRole !== '' && in_array($selectedRole, array_merge($roleKeys, ['super_admin']), true)) {
-            $adminsQuery->where('role', $selectedRole);
+            $adminsQuery->where(function (Builder $query) use ($selectedRole) {
+                $query->where('role', $selectedRole)
+                    ->orWhereHas('roles', function (Builder $roleQuery) use ($selectedRole) {
+                        $roleQuery->where('role_key', $selectedRole);
+                    });
+            });
         }
 
         $search = trim((string) $request->query('search', ''));
@@ -76,16 +90,15 @@ class AdminManagementController extends Controller
             ->orderBy('role_title')
             ->get(['role_title', 'role_key']);
 
-        return view('admin.admin-management.create', compact('roleOptions'));
+        $privilegeCatalog = $this->adminAccessService->privilegeCatalogForView();
+
+        return view('admin.admin-management.create', compact('roleOptions', 'privilegeCatalog'));
     }
 
     public function roles()
     {
         $roleRows = AdminRole::query()
-            ->select('admin_roles.*')
-            ->selectRaw('COUNT(users.id) as users_count')
-            ->leftJoin('users', 'users.role', '=', 'admin_roles.role_key')
-            ->groupBy('admin_roles.id', 'admin_roles.role_title', 'admin_roles.role_key', 'admin_roles.created_at', 'admin_roles.updated_at')
+            ->withCount('users')
             ->orderBy('admin_roles.id')
             ->get();
 
@@ -153,9 +166,12 @@ class AdminManagementController extends Controller
             'aadhaar_no' => 'nullable|string|max:20',
             'pan_no' => 'nullable|string|max:20',
             'dob' => 'nullable|date',
-            'role' => ['required', Rule::exists('admin_roles', 'role_key')],
+            'role_keys' => ['required', 'array', 'min:1'],
+            'role_keys.*' => [Rule::exists('admin_roles', 'role_key')],
             'status' => 'required|in:active,inactive',
             'profile_pic' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
+            'privilege_keys' => 'nullable|array',
+            'privilege_keys.*' => 'string',
         ]);
 
         $profilePicPath = null;
@@ -165,7 +181,7 @@ class AdminManagementController extends Controller
 
         $fullName = trim(($validated['first_name'] ?? '') . ' ' . ($validated['last_name'] ?? ''));
 
-        User::create([
+        $user = User::create([
             'name' => $fullName,
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'] ?? null,
@@ -178,9 +194,12 @@ class AdminManagementController extends Controller
             'pan_no' => $validated['pan_no'] ?? null,
             'dob' => $validated['dob'] ?? null,
             'profile_pic' => $profilePicPath,
-            'role' => $validated['role'],
+            'role' => $validated['role_keys'][0],
             'is_active' => $validated['status'] === 'active',
         ]);
+
+        $this->adminAccessService->syncRoles($user, $validated['role_keys']);
+        $this->adminAccessService->syncPrivilegesFromSelection($user, $validated['privilege_keys'] ?? []);
 
         return redirect()->route('admin.admin-management.index')
             ->with('success', 'Sub admin created successfully!');
@@ -192,7 +211,16 @@ class AdminManagementController extends Controller
             ->orderBy('role_title')
             ->get(['role_title', 'role_key']);
 
-        return view('admin.admin-management.edit', compact('admin', 'roleOptions'));
+        $this->adminAccessService->syncPrivilegeCatalogForUser($admin);
+
+        $privilegeCatalog = $this->adminAccessService->privilegeCatalogForView();
+        $selectedPrivilegeKeys = $admin->privileges()
+            ->where('is_allowed', true)
+            ->get()
+            ->map(fn (AdminPrivilege $privilege) => $privilege->page_key . ':' . $privilege->action_key)
+            ->all();
+
+        return view('admin.admin-management.edit', compact('admin', 'roleOptions', 'privilegeCatalog', 'selectedPrivilegeKeys'));
     }
 
     public function update(Request $request, User $admin)
@@ -207,9 +235,12 @@ class AdminManagementController extends Controller
             'aadhaar_no' => 'nullable|string|max:20',
             'pan_no' => 'nullable|string|max:20',
             'dob' => 'nullable|date',
-            'role' => ['required', Rule::exists('admin_roles', 'role_key')],
+            'role_keys' => ['required', 'array', 'min:1'],
+            'role_keys.*' => [Rule::exists('admin_roles', 'role_key')],
             'status' => 'required|in:active,inactive',
             'profile_pic' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
+            'privilege_keys' => 'nullable|array',
+            'privilege_keys.*' => 'string',
         ]);
 
         $profilePicPath = $admin->profile_pic;
@@ -231,9 +262,12 @@ class AdminManagementController extends Controller
             'pan_no' => $validated['pan_no'] ?? null,
             'dob' => $validated['dob'] ?? null,
             'profile_pic' => $profilePicPath,
-            'role' => $validated['role'],
+            'role' => $validated['role_keys'][0],
             'is_active' => $validated['status'] === 'active',
         ]);
+
+        $this->adminAccessService->syncRoles($admin, $validated['role_keys']);
+        $this->adminAccessService->syncPrivilegesFromSelection($admin, $validated['privilege_keys'] ?? []);
 
         return redirect()->route('admin.admin-management.index')
             ->with('success', 'Sub admin updated successfully!');
@@ -267,17 +301,24 @@ class AdminManagementController extends Controller
 
     public function privileges(User $admin)
     {
-        $this->syncPrivilegeCatalogForUser($admin);
+        $this->adminAccessService->syncPrivilegeCatalogForUser($admin);
 
         $privileges = AdminPrivilege::query()
             ->where('user_id', $admin->id)
-            ->orderBy('id')
+            ->orderBy('group_key')
+            ->orderBy('page_key')
+            ->orderBy('action_key')
             ->get();
 
-        $groupedPrivileges = $privileges->groupBy('group_key')->map(function (Collection $items) {
+        $groupedPrivileges = $privileges->groupBy('group_key')->map(function ($items) {
             return [
                 'group_title' => (string) $items->first()->group_title,
-                'items' => $items->values(),
+                'pages' => $items->groupBy('page_key')->map(function ($pageItems) {
+                    return [
+                        'page_title' => (string) $pageItems->first()->page_title,
+                        'items' => $pageItems->values(),
+                    ];
+                })->values(),
             ];
         });
 
@@ -321,36 +362,18 @@ class AdminManagementController extends Controller
         return view('admin.admin-management.login-log', compact('admin', 'logs'));
     }
 
-    private function syncPrivilegeCatalogForUser(User $admin): void
+    public function activityLog(User $admin)
     {
-        $catalog = config('admin_privileges', []);
+        $logs = AdminActivityLog::query()
+            ->with(['actor:id,name,email', 'owner:id,name,email'])
+            ->where(function (Builder $query) use ($admin) {
+                $query->where('actor_user_id', $admin->id)
+                    ->orWhere('owner_user_id', $admin->id);
+            })
+            ->orderByDesc('occurred_at')
+            ->paginate(20);
 
-        DB::transaction(function () use ($admin, $catalog): void {
-            foreach ($catalog as $groupKey => $group) {
-                $groupTitle = $group['title'] ?? Str::title(str_replace('_', ' ', $groupKey));
-
-                foreach (($group['pages'] ?? []) as $page) {
-                    $pageKey = (string) ($page['key'] ?? '');
-                    if ($pageKey === '') {
-                        continue;
-                    }
-
-                    $pageTitle = (string) ($page['title'] ?? Str::title(str_replace('_', ' ', $pageKey)));
-
-                    AdminPrivilege::query()->updateOrCreate(
-                        [
-                            'user_id' => $admin->id,
-                            'page_key' => $pageKey,
-                        ],
-                        [
-                            'group_key' => (string) $groupKey,
-                            'group_title' => $groupTitle,
-                            'page_title' => $pageTitle,
-                        ]
-                    );
-                }
-            }
-        });
+        return view('admin.admin-management.activity-log', compact('admin', 'logs'));
     }
 }
 

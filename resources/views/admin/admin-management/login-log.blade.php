@@ -16,8 +16,11 @@
                 <tr>
                     <th>SL No.</th>
                     <th>Login Time</th>
+                    <th>Logout Time</th>
                     <th>IP Address</th>
-                    <th>Browser / Device</th>
+                    <th>Device</th>
+                    <th>Browser</th>
+                    <th>Raw Agent</th>
                 </tr>
             </thead>
             <tbody>
@@ -25,12 +28,15 @@
                     <tr>
                         <td>{{ $logs->firstItem() + $index }}</td>
                         <td>{{ optional($log->logged_in_at)->format('d/m/Y h:i A') }}</td>
+                        <td>{{ optional($log->logged_out_at)->format('d/m/Y h:i A') ?: '-' }}</td>
                         <td>{{ $log->ip_address ?: '-' }}</td>
+                        <td>{{ trim(($log->device_name ?: '-') . ' / ' . ($log->device_type ?: '-')) }}</td>
+                        <td>{{ trim(($log->browser_name ?: '-') . ' ' . ($log->browser_version ?: '')) }}</td>
                         <td class="max-w-[420px] truncate" title="{{ $log->user_agent }}">{{ $log->user_agent ?: '-' }}</td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="4" class="py-8 text-center text-slate-500">No login logs found.</td>
+                        <td colspan="7" class="py-8 text-center text-slate-500">No login logs found.</td>
                     </tr>
                 @endforelse
             </tbody>
