@@ -18,10 +18,26 @@
                  mdmOpen: @json(request()->routeIs('admin.specialization') || request()->routeIs('admin.plans') || request()->routeIs('admin.high-risk-plans') || request()->routeIs('admin.combo-plans') || request()->routeIs('admin.insurance-plans')),
                  empOpen: @json(request()->routeIs('admin.admin-management.*')),
                  doctorOpen: @json(request()->routeIs('admin.enrollment') || request()->routeIs('admin.doctors')),
+                      policyOpen: @json(request()->routeIs('admin.policy-receipt.*')),
+                      renewOpen: false,
+                      legalOpen: @json(request()->routeIs('admin.cases')),
+                      accountOpen: @json(request()->routeIs('admin.receipts')),
+                      marketingOpen: false,
+                      dispatchedOpen: @json(request()->routeIs('admin.posts')),
+                     bulkOpen: @json(request()->routeIs('admin.bulk-upload.*')),
+                      websiteOpen: false,
                  toggleMenu(menu) {
                     if (menu === 'mdm') this.mdmOpen = !this.mdmOpen;
                     if (menu === 'emp') this.empOpen = !this.empOpen;
                     if (menu === 'doctor') this.doctorOpen = !this.doctorOpen;
+                    if (menu === 'policy') this.policyOpen = !this.policyOpen;
+                          if (menu === 'renew') this.renewOpen = !this.renewOpen;
+                          if (menu === 'legal') this.legalOpen = !this.legalOpen;
+                          if (menu === 'account') this.accountOpen = !this.accountOpen;
+                          if (menu === 'marketing') this.marketingOpen = !this.marketingOpen;
+                          if (menu === 'dispatched') this.dispatchedOpen = !this.dispatchedOpen;
+                          if (menu === 'bulk') this.bulkOpen = !this.bulkOpen;
+                          if (menu === 'website') this.websiteOpen = !this.websiteOpen;
                  }
              }">
             <div class="mb-6 flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
@@ -98,6 +114,121 @@
                     <ul class="tree-menu" x-show="doctorOpen" x-transition.opacity x-cloak>
                         <li><a href="{{ route('admin.enrollment.create') }}" class="{{ request()->routeIs('admin.enrollment.create') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-user-add-line"></i><span>Enrollment Entry</span></span></a></li>
                         <li><a href="{{ route('admin.enrollment') }}" class="{{ request()->routeIs('admin.enrollment') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Doctor List</span></span></a></li>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Membership nos.</span></span></a></li>
+                    </ul>
+                </div>
+
+                <div class="treeview">
+                    <button type="button" class="tree-toggle nav-link w-full" @click="toggleMenu('policy')">
+                        <span class="flex items-center gap-3">
+                            <i class="ri-file-list-3-line"></i>
+                            <span>Policy Management</span>
+                        </span>
+                        <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': policyOpen }"></i>
+                    </button>
+                    <ul class="tree-menu" x-show="policyOpen" x-transition.opacity x-cloak>
+                        <li><a href="{{ route('admin.policy-receipt.index') }}" class="{{ request()->routeIs('admin.policy-receipt.*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Policy Received</span></span></a></li>
+                        <li><a href="{{ route('admin.policy-receipt.doctors') }}" class=""><span class="submenu-left"><i class="ri-list-check-2"></i><span>Doctors policy</span></span></a></li>
+                    </ul>
+                </div>
+
+                <div class="treeview">
+                    <button type="button" class="tree-toggle nav-link w-full" @click="toggleMenu('renew')">
+                        <span class="flex items-center gap-3">
+                            <i class="ri-repeat-line"></i>
+                            <span>Renew doctor</span>
+                        </span>
+                        <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': renewOpen }"></i>
+                    </button>
+                    <ul class="tree-menu" x-show="renewOpen" x-transition.opacity x-cloak>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Renew doctor</span></span></a></li>
+                    </ul>
+                </div>
+
+                <div class="treeview">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.cases') ? 'active' : '' }}" @click="toggleMenu('legal')">
+                        <span class="flex items-center gap-3">
+                            <i class="ri-scales-3-line"></i>
+                            <span>Legal case management</span>
+                        </span>
+                        <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': legalOpen }"></i>
+                    </button>
+                    <ul class="tree-menu" x-show="legalOpen" x-transition.opacity x-cloak>
+                        <li><a href="{{ route('admin.cases') }}" class="{{ request()->routeIs('admin.cases') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Case List</span></span></a></li>
+                    </ul>
+                </div>
+
+                <div class="treeview">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.receipts') ? 'active' : '' }}" @click="toggleMenu('account')">
+                        <span class="flex items-center gap-3">
+                            <i class="ri-bank-card-line"></i>
+                            <span>Account Management</span>
+                        </span>
+                        <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': accountOpen }"></i>
+                    </button>
+                    <ul class="tree-menu" x-show="accountOpen" x-transition.opacity x-cloak>
+                        <li><a href="{{ route('admin.receipts') }}" class="{{ request()->routeIs('admin.receipts') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Money Reciept</span></span></a></li>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Premium Amount</span></span></a></li>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Enrollment cheque deposit</span></span></a></li>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Renewal cheque deposit</span></span></a></li>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense category</span></span></a></li>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense</span></span></a></li>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage salary</span></span></a></li>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Office expensions</span></span></a></li>
+                    </ul>
+                </div>
+
+                <div class="treeview">
+                    <button type="button" class="tree-toggle nav-link w-full" @click="toggleMenu('marketing')">
+                        <span class="flex items-center gap-3">
+                            <i class="ri-megaphone-line"></i>
+                            <span>Marketing</span>
+                        </span>
+                        <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': marketingOpen }"></i>
+                    </button>
+                    <ul class="tree-menu" x-show="marketingOpen" x-transition.opacity x-cloak>
+                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Call sheet</span></span></a></li>
+                    </ul>
+                </div>
+
+                <div class="treeview">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.posts') ? 'active' : '' }}" @click="toggleMenu('dispatched')">
+                        <span class="flex items-center gap-3">
+                            <i class="ri-mail-send-line"></i>
+                            <span>Dispatched post</span>
+                        </span>
+                        <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': dispatchedOpen }"></i>
+                    </button>
+                    <ul class="tree-menu" x-show="dispatchedOpen" x-transition.opacity x-cloak>
+                        <li><a href="{{ route('admin.posts') }}" class="{{ request()->routeIs('admin.posts') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Post List</span></span></a></li>
+                    </ul>
+                </div>
+
+                <div class="treeview">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.bulk-upload.*') ? 'active' : '' }}" @click="toggleMenu('bulk')">
+                        <span class="flex items-center gap-3">
+                            <i class="ri-upload-cloud-2-line"></i>
+                            <span>Bulk Upload</span>
+                        </span>
+                        <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': bulkOpen }"></i>
+                    </button>
+                    <ul class="tree-menu" x-show="bulkOpen" x-transition.opacity x-cloak>
+                        <li><a href="{{ route('admin.bulk-upload.index') }}" class="{{ request()->routeIs('admin.bulk-upload.*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-external-link-line"></i><span>Bulk Upload</span></span></a></li>
+                    </ul>
+                </div>
+
+                <div class="treeview">
+                    <button type="button" class="tree-toggle nav-link w-full" @click="toggleMenu('website')">
+                        <span class="flex items-center gap-3">
+                            <i class="ri-links-line"></i>
+                            <span>Website Link</span>
+                        </span>
+                        <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': websiteOpen }"></i>
+                    </button>
+                    <ul class="tree-menu" x-show="websiteOpen" x-transition.opacity x-cloak>
+                        <li><a href="http://cms.nic.in/ncdrcusersWeb/courtroommodule.do?method=loadCaseHistory" target="_blank"><span class="submenu-left"><i class="ri-external-link-line"></i><span>Case History</span></span></a></li>
+                        <li><a href="https://fir.kolkatapolice.org/" target="_blank"><span class="submenu-left"><i class="ri-external-link-line"></i><span>kolkatapolice.org</span></span></a></li>
+                        <li><a href="http://www.dtdc.in/" target="_blank"><span class="submenu-left"><i class="ri-external-link-line"></i><span>DTDC</span></span></a></li>
                     </ul>
                 </div>
 
@@ -160,5 +291,6 @@
             </main>
         </div>
     </div>
+    @stack('scripts')
 </body>
 </html>

@@ -5,12 +5,15 @@ use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\AdminManagementController;
 use App\Http\Controllers\Admin\DoctorController;
+use App\Http\Controllers\Admin\PolicyReceiptController;
 use App\Http\Controllers\Admin\SpecializationController;
 use App\Http\Controllers\Admin\NormalPlanController;
 use App\Http\Controllers\Admin\HighRiskPlanController;
 use App\Http\Controllers\Admin\ComboPlanController;
 use App\Http\Controllers\Admin\EnrollmentController;
 use App\Http\Controllers\Admin\InsurancePlanController;
+use App\Http\Controllers\Admin\BulkUploadController;
+use App\Http\Controllers\Admin\DoctorPostController;
 
 Route::get('/', function () {
     return redirect()->route('admin.login');
@@ -55,6 +58,20 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('ajax/states/{countryId}', [EnrollmentController::class, 'getStates'])->middleware('admin.privilege:enrollment,edit')->name('ajax.states');
         Route::get('ajax/cities/{stateId}', [EnrollmentController::class, 'getCities'])->middleware('admin.privilege:enrollment,edit')->name('ajax.cities');
         Route::get('ajax/coverage', [EnrollmentController::class, 'getCoverage'])->middleware('admin.privilege:enrollment,edit')->name('ajax.coverage');
+        
+        // Policy Receipt
+        Route::get('policy-receipt', [PolicyReceiptController::class, 'index'])->middleware('admin.privilege:policy_receipt,view')->name('policy-receipt.index');
+        Route::get('policy-receipt/create', [PolicyReceiptController::class, 'create'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.create');
+        Route::post('policy-receipt', [PolicyReceiptController::class, 'store'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.store');
+        Route::get('policy-receipt/doctors', [PolicyReceiptController::class, 'doctors'])->middleware('admin.privilege:policy_receipt,view')->name('policy-receipt.doctors');
+        Route::get('policy-receipt/{id}', [PolicyReceiptController::class, 'show'])->middleware('admin.privilege:policy_receipt,view')->name('policy-receipt.show');
+        Route::get('policy-receipt/{id}/edit', [PolicyReceiptController::class, 'edit'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.edit');
+        Route::put('policy-receipt/{id}', [PolicyReceiptController::class, 'update'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.update');
+        Route::delete('policy-receipt/{id}', [PolicyReceiptController::class, 'destroy'])->middleware('admin.privilege:policy_receipt,delete')->name('policy-receipt.destroy');
+
+        // Bulk Upload
+        Route::get('bulk-upload', [BulkUploadController::class, 'index'])->middleware('admin.privilege:doctors,edit')->name('bulk-upload.index');
+        Route::post('bulk-upload', [BulkUploadController::class, 'store'])->middleware('admin.privilege:doctors,edit')->name('bulk-upload.store');
         
         // Money Receipts
         Route::get('receipts', function () {
@@ -102,9 +119,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::delete('specialization/{specialization}', [SpecializationController::class, 'destroy'])->middleware('admin.privilege:specializations,delete')->name('specialization.destroy');
         
         // Doctor Posts
-        Route::get('posts', function () {
-            return view('admin.posts.index');
-        })->middleware('admin.privilege:posts,view')->name('posts');
+        Route::get('posts', [DoctorPostController::class, 'index'])->middleware('admin.privilege:posts,view')->name('posts');
+        Route::post('posts', [DoctorPostController::class, 'store'])->middleware('admin.privilege:posts,edit')->name('posts.store');
+        Route::delete('posts/{post}', [DoctorPostController::class, 'destroy'])->middleware('admin.privilege:posts,delete')->name('posts.destroy');
         
         // Reports
         Route::get('reports', function () {
