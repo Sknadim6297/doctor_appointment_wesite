@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\EnrollmentController;
 use App\Http\Controllers\Admin\InsurancePlanController;
 use App\Http\Controllers\Admin\BulkUploadController;
 use App\Http\Controllers\Admin\DoctorPostController;
+use App\Http\Controllers\Admin\CallSheetController;
 
 Route::get('/', function () {
     return redirect()->route('admin.login');
@@ -122,6 +123,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('posts', [DoctorPostController::class, 'index'])->middleware('admin.privilege:posts,view')->name('posts');
         Route::post('posts', [DoctorPostController::class, 'store'])->middleware('admin.privilege:posts,edit')->name('posts.store');
         Route::delete('posts/{post}', [DoctorPostController::class, 'destroy'])->middleware('admin.privilege:posts,delete')->name('posts.destroy');
+
+        // Marketing Call Sheet
+        Route::get('call-sheet', [CallSheetController::class, 'index'])->middleware('admin.privilege:doctors,view')->name('call-sheet.index');
+        Route::get('call-sheet/csv', [CallSheetController::class, 'csv'])->middleware('admin.privilege:doctors,view')->name('call-sheet.csv');
         
         // Reports
         Route::get('reports', function () {

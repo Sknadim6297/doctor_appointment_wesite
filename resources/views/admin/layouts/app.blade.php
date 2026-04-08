@@ -22,7 +22,7 @@
                       renewOpen: false,
                       legalOpen: @json(request()->routeIs('admin.cases')),
                       accountOpen: @json(request()->routeIs('admin.receipts')),
-                      marketingOpen: false,
+                      marketingOpen: @json(request()->routeIs('admin.call-sheet.*')),
                       dispatchedOpen: @json(request()->routeIs('admin.posts')),
                      bulkOpen: @json(request()->routeIs('admin.bulk-upload.*')),
                       websiteOpen: false,
@@ -179,7 +179,7 @@
                 </div>
 
                 <div class="treeview">
-                    <button type="button" class="tree-toggle nav-link w-full" @click="toggleMenu('marketing')">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.call-sheet.*') ? 'active' : '' }}" @click="toggleMenu('marketing')">
                         <span class="flex items-center gap-3">
                             <i class="ri-megaphone-line"></i>
                             <span>Marketing</span>
@@ -187,7 +187,7 @@
                         <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': marketingOpen }"></i>
                     </button>
                     <ul class="tree-menu" x-show="marketingOpen" x-transition.opacity x-cloak>
-                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Call sheet</span></span></a></li>
+                        <li><a href="{{ route('admin.call-sheet.index') }}" class="{{ request()->routeIs('admin.call-sheet.*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Call sheet</span></span></a></li>
                     </ul>
                 </div>
 

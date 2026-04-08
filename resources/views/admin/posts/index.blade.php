@@ -91,71 +91,92 @@
 </section>
 
 <div id="postModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 px-4">
-    <div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
-        <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h3 class="text-lg font-semibold">New post</h3>
-            <button type="button" class="text-2xl leading-none" onclick="closePostModal()">&times;</button>
-        </div>
-        <div class="max-h-[75vh] overflow-y-auto px-5 py-4">
-            <form action="{{ route('admin.posts.store') }}" method="post" class="form-horizontal" id="post_upload_form" enctype="multipart/form-data">
-                @csrf
-                <div class="form-group mb-3">
-                    <label class="control-label" for="doctor">Doctor: <span style="color: red;">*</span></label>
-                    <select id="doctor" name="doctor" class="form-control select2" required>
-                        <option value="0">--Select doctor--</option>
-                        @foreach($doctors as $doctor)
-                            <option value="{{ $doctor->id }}">{{ $doctor->doctor_name }}{{ $doctor->money_rc_no ? ' (' . $doctor->money_rc_no . ')' : '' }}</option>
-                        @endforeach
-                    </select>
-                </div>
+    <div class="modal-content w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+        <form action="{{ route('admin.posts.store') }}" method="post" class="form-horizontal" id="post_upload_form" enctype="multipart/form-data">
+            @csrf
+            <div class="modal-header flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                <h3 class="text-lg font-semibold">New post</h3>
+                <button type="button" class="close text-2xl leading-none" onclick="closePostModal()">&times;</button>
+            </div>
 
-                <div class="form-group mb-3">
-                    <label class="control-label" for="post_doc_date">Post date: <span style="color: red;">*</span></label>
-                    <input type="text" id="post_doc_date" class="form-control datepicker" name="post_doc_date" autocomplete="off" required>
-                </div>
+            <div class="modal-body max-h-[75vh] overflow-y-auto px-5 py-4">
+                <fieldset>
+                    <div class="control-group mb-4">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="doctor">Doctor: <span style="color: red;">*</span></label>
+                        <div class="controls">
+                            <select id="doctor" name="doctor" class="form-control select2" required>
+                                <option value="0">--Select doctor--</option>
+                                @foreach($doctors as $doctor)
+                                    <option value="{{ $doctor->id }}">{{ $doctor->doctor_name }}{{ $doctor->money_rc_no ? ' (' . $doctor->money_rc_no . ')' : '' }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
 
-                <div class="form-group mb-3">
-                    <label class="control-label" for="post_doc_consignment_no">Consignment number: <span style="color: red;">*</span></label>
-                    <input type="text" id="post_doc_consignment_no" class="form-control" name="post_doc_consignment_no" required>
-                </div>
+                    <div class="control-group mb-4">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="post_doc_date">Post date: <span style="color: red;">*</span></label>
+                        <div class="controls">
+                            <input type="text" id="post_doc_date" class="form-control datepicker" name="post_doc_date" autocomplete="off" required>
+                        </div>
+                    </div>
 
-                <div class="form-group mb-3">
-                    <label class="control-label" for="post_doc_by">Post by: <span style="color: red;">*</span></label>
-                    <input type="text" id="post_doc_by" class="form-control" name="post_doc_by" required>
-                </div>
+                    <div class="control-group mb-4">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="post_doc_consignment_no">Consignment number: <span style="color: red;">*</span></label>
+                        <div class="controls">
+                            <input type="text" id="post_doc_consignment_no" class="form-control" name="post_doc_consignment_no" required>
+                        </div>
+                    </div>
 
-                <div class="form-group mb-3">
-                    <label class="control-label" for="post_doc_recieved_date">Recieved date: <span style="color: red;">*</span></label>
-                    <input type="text" id="post_doc_recieved_date" class="form-control datepicker" name="post_doc_recieved_date" autocomplete="off" required>
-                </div>
+                    <div class="control-group mb-4">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="post_doc_by">Post by: <span style="color: red;">*</span></label>
+                        <div class="controls">
+                            <input type="text" id="post_doc_by" class="form-control" name="post_doc_by" required>
+                        </div>
+                    </div>
 
-                <div class="form-group mb-3">
-                    <label class="control-label" for="post_doc_recieved_by">Recieved by:</label>
-                    <input type="text" id="post_doc_recieved_by" class="form-control" name="post_doc_recieved_by">
-                </div>
+                    <div class="control-group mb-4">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="post_doc_recieved_date">Recieved date: <span style="color: red;">*</span></label>
+                        <div class="controls">
+                            <input type="text" id="post_doc_recieved_date" class="form-control datepicker" name="post_doc_recieved_date" autocomplete="off" required>
+                        </div>
+                    </div>
 
-                <div class="form-group mb-3">
-                    <label class="control-label" for="post_doc_remark">Remark: <span style="color: red;">*</span></label>
-                    <input type="text" id="post_doc_remark" class="form-control" name="post_doc_remark" required>
-                </div>
+                    <div class="control-group mb-4">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="post_doc_recieved_by">Recieved by:</label>
+                        <div class="controls">
+                            <input type="text" id="post_doc_recieved_by" class="form-control" name="post_doc_recieved_by">
+                        </div>
+                    </div>
 
-                <div class="form-group mb-3">
-                    <label class="control-label" for="tracking_link">Tracking link:</label>
-                    <p class="text-xs text-slate-500">Insert valid link (Example: http://www.example.com, https://www.example.com)</p>
-                    <input type="text" id="tracking_link" name="tracking_link" class="form-control">
-                </div>
+                    <div class="control-group mb-4">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="post_doc_remark">Remark: <span style="color: red;">*</span></label>
+                        <div class="controls">
+                            <input type="text" id="post_doc_remark" class="form-control" name="post_doc_remark" required>
+                        </div>
+                    </div>
 
-                <div class="form-group mb-4">
-                    <label class="control-label" for="post_doc_file">Document file:</label>
-                    <input type="file" id="post_doc_file" class="form-control" name="post_doc_file">
-                </div>
+                    <div class="control-group mb-4">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="tracking_link">Tracking link:</label>
+                        <div class="controls">
+                            <p class="mb-2 text-xs text-slate-500">Insert valid link (Example: http://www.example.com, https://www.example.com)</p>
+                            <input type="text" id="tracking_link" name="tracking_link" class="form-control">
+                        </div>
+                    </div>
 
-                <div class="flex justify-end gap-2 border-t border-slate-200 pt-4">
-                    <a href="javascript:void(0)" class="btn btn-default" onclick="closePostModal()">Close</a>
-                    <button type="submit" class="btn btn-primary">Submit</button>
-                </div>
-            </form>
-        </div>
+                    <div class="control-group">
+                        <label class="control-label mb-2 block text-sm font-semibold" for="post_doc_file">Document file:</label>
+                        <div class="controls">
+                            <input type="file" id="post_doc_file" class="form-control" name="post_doc_file">
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <div class="modal-footer flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                <a href="javascript:void(0)" class="btn btn-default" onclick="closePostModal()">Close</a>
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </div>
+        </form>
     </div>
 </div>
 
