@@ -12,18 +12,18 @@
 <body class="admin-shell" x-data="{ sidebarOpen: false }">
     <div class="flex min-h-screen overflow-hidden">
 
-         <aside class="side-rail fixed inset-y-0 left-0 z-50 w-72 flex-shrink-0 transform p-5 transition-transform duration-300 lg:static lg:translate-x-0"
+         <aside class="side-rail fixed inset-y-0 left-0 z-50 flex h-screen max-h-screen w-72 flex-shrink-0 flex-col overflow-hidden transform p-5 transition-transform duration-300 lg:static lg:translate-x-0"
              :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
              x-data="{
                  mdmOpen: @json(request()->routeIs('admin.specialization') || request()->routeIs('admin.plans') || request()->routeIs('admin.high-risk-plans') || request()->routeIs('admin.combo-plans') || request()->routeIs('admin.insurance-plans')),
                  empOpen: @json(request()->routeIs('admin.admin-management.*')),
-                 doctorOpen: @json(request()->routeIs('admin.enrollment') || request()->routeIs('admin.doctors')),
+                 doctorOpen: @json(request()->routeIs('admin.enrollment*') || request()->routeIs('admin.doctors*')),
                       policyOpen: @json(request()->routeIs('admin.policy-receipt.*')),
                       renewOpen: false,
                       legalOpen: @json(request()->routeIs('admin.cases')),
                       accountOpen: @json(request()->routeIs('admin.receipts')),
                       marketingOpen: @json(request()->routeIs('admin.call-sheet.*')),
-                      dispatchedOpen: @json(request()->routeIs('admin.posts')),
+                      dispatchedOpen: @json(request()->routeIs('admin.posts*')),
                      bulkOpen: @json(request()->routeIs('admin.bulk-upload.*')),
                       websiteOpen: false,
                  toggleMenu(menu) {
@@ -51,7 +51,7 @@
                 <button class="text-white lg:hidden" @click="sidebarOpen = false"><i class="ri-close-line text-xl"></i></button>
             </div>
 
-            <nav class="sidebar-menu space-y-2 overflow-y-auto pb-8">
+            <nav class="sidebar-menu min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pb-8 pr-1">
                 <p class="menu-section-title">ADMINISTRATION</p>
 
                 <a href="{{ route('admin.dashboard') }}" class="nav-link {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
@@ -104,7 +104,7 @@
                 </div>
 
                 <div class="treeview">
-                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.enrollment') || request()->routeIs('admin.enrollment.*') ? 'active' : '' }}" @click="toggleMenu('doctor')">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.enrollment*') || request()->routeIs('admin.doctors*') ? 'active' : '' }}" @click="toggleMenu('doctor')">
                         <span class="flex items-center gap-3">
                             <i class="ri-stethoscope-line"></i>
                             <span>Doctor Management</span>
@@ -113,7 +113,8 @@
                     </button>
                     <ul class="tree-menu" x-show="doctorOpen" x-transition.opacity x-cloak>
                         <li><a href="{{ route('admin.enrollment.create') }}" class="{{ request()->routeIs('admin.enrollment.create') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-user-add-line"></i><span>Enrollment Entry</span></span></a></li>
-                        <li><a href="{{ route('admin.enrollment') }}" class="{{ request()->routeIs('admin.enrollment') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Doctor List</span></span></a></li>
+                        <li><a href="{{ route('admin.enrollment') }}" class="{{ request()->routeIs('admin.enrollment*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Doctor List</span></span></a></li>
+                        <li><a href="{{ route('admin.doctors.incomplete-documents') }}" class="{{ request()->routeIs('admin.doctors.incomplete-documents') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-file-warning-line"></i><span>Incomplete Docs</span></span></a></li>
                         <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Membership nos.</span></span></a></li>
                     </ul>
                 </div>
@@ -192,7 +193,7 @@
                 </div>
 
                 <div class="treeview">
-                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.posts') ? 'active' : '' }}" @click="toggleMenu('dispatched')">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.posts*') ? 'active' : '' }}" @click="toggleMenu('dispatched')">
                         <span class="flex items-center gap-3">
                             <i class="ri-mail-send-line"></i>
                             <span>Dispatched post</span>
@@ -200,7 +201,7 @@
                         <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': dispatchedOpen }"></i>
                     </button>
                     <ul class="tree-menu" x-show="dispatchedOpen" x-transition.opacity x-cloak>
-                        <li><a href="{{ route('admin.posts') }}" class="{{ request()->routeIs('admin.posts') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Post List</span></span></a></li>
+                        <li><a href="{{ route('admin.posts') }}" class="{{ request()->routeIs('admin.posts*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-external-link-line"></i><span>Post List</span></span></a></li>
                     </ul>
                 </div>
 

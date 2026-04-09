@@ -21,6 +21,7 @@
     }
     .doctor-btn:hover { filter: brightness(0.95); }
     .doctor-btn-blue { background: #1d4ed8; }
+    .doctor-btn-amber { background: #d97706; }
     .doctor-heading {
         color: #0f172a;
         letter-spacing: 0.01em;
@@ -137,6 +138,10 @@
                 <a href="{{ route('admin.enrollment.create') }}" class="doctor-btn doctor-btn-blue">
                     <i class="ri-user-add-line mr-1"></i>
                     New Enrollment
+                </a>
+                <a href="{{ route('admin.doctors.incomplete-documents') }}" class="doctor-btn doctor-btn-amber">
+                    <i class="ri-file-warning-line mr-1"></i>
+                    Incomplete Docs
                 </a>
             </div>
         </form>

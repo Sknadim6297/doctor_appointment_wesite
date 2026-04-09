@@ -128,6 +128,14 @@ class DoctorController extends Controller
      */
     public function incompleteDocuments(Request $request)
     {
+        $this->activityLogService->log(
+            $request,
+            'doctors',
+            'view',
+            description: 'Viewed incomplete doctor documents list.',
+            metadata: $request->only(['search_month', 'search_year'])
+        );
+
         $query = Enrollment::query()
             ->with('specialization')
             ->where(function ($q) {
@@ -140,6 +148,18 @@ class DoctorController extends Controller
             })
             ->orderByDesc('created_at');
 
+        $searchMonth = $request->input('search_month');
+        $searchYear = $request->input('search_year');
+
+        if (!empty($searchMonth) && $searchMonth !== '0') {
+            $monthNumber = date('n', strtotime($searchMonth));
+            $query->whereRaw('MONTH(DATE_ADD(created_at, INTERVAL 1 YEAR)) = ?', [$monthNumber]);
+        }
+
+        if (!empty($searchYear) && $searchYear !== '0') {
+            $query->whereRaw('YEAR(DATE_ADD(created_at, INTERVAL 1 YEAR)) = ?', [$searchYear]);
+        }
+
         $doctors = $query->paginate(25)->appends($request->query());
         $specializations = Specialization::all();
         $plans = [
@@ -148,7 +168,7 @@ class DoctorController extends Controller
             3 => 'Combo',
         ];
 
-        return view('admin.doctors.index', compact('doctors', 'specializations', 'plans'));
+        return view('admin.doctors.incomplete-documents', compact('doctors', 'specializations', 'plans'));
     }
 
     /**

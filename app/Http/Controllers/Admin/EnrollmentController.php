@@ -311,8 +311,8 @@ class EnrollmentController extends Controller
         }
 
         return redirect()
-            ->route('admin.enrollment')
-            ->with('success', 'Enrollment saved successfully.');
+            ->route('admin.enrollment.step2', $enrollment)
+            ->with('success', 'Enrollment saved successfully. Review the document preview and continue to post submission.');
     }
 
     /**
@@ -401,6 +401,16 @@ class EnrollmentController extends Controller
         $enrollment->update($validated);
 
         return redirect()->route('admin.enrollment')->with('success', 'Enrollment updated successfully.');
+    }
+
+    public function stepTwo(Enrollment $enrollment)
+    {
+        return view('admin.enrollment.step2', compact('enrollment'));
+    }
+
+    public function stepThree(Enrollment $enrollment)
+    {
+        return view('admin.enrollment.step3', compact('enrollment'));
     }
 
     // ──────────────────────────── AJAX endpoints ─────────────────────────────

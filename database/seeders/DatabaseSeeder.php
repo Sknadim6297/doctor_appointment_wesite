@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             AdminRoleSeeder::class,
             SpecializationSeeder::class,
             NormalPlanSeeder::class,
+            EnrollmentSeeder::class,
         ]);
     }
 }
