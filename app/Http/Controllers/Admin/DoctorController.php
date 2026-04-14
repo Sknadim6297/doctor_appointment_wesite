@@ -7,8 +7,10 @@ use App\Models\Enrollment;
 use App\Models\Specialization;
 use App\Services\ActivityLogService;
 use App\Services\SecurityAlertService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DoctorController extends Controller
 {
@@ -233,6 +235,450 @@ class DoctorController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Money receipt listing (Account Management).
+     */
+    public function receipts(Request $request)
+    {
+        $this->activityLogService->log(
+            $request,
+            'receipts',
+            'view',
+            description: 'Viewed money receipt listing.',
+            metadata: $request->only(['search', 'search_month', 'search_year'])
+        );
+
+        $searchMonth = (int) $request->input('search_month', 0);
+        $searchYear = (int) $request->input('search_year', 0);
+        $searchText = trim((string) $request->input('search', ''));
+
+        $receipts = $this->moneyReceiptQuery($request)
+            ->paginate(25)
+            ->appends($request->query());
+
+        $summary = $this->moneyReceiptQuery($request)
+            ->toBase()
+            ->reorder()
+            ->selectRaw('COALESCE(SUM(payment_amount), 0) as total_payment_amount, COALESCE(SUM(service_amount), 0) as total_service_amount')
+            ->first();
+
+        $months = [
+            1 => 'January',
+            2 => 'February',
+            3 => 'March',
+            4 => 'April',
+            5 => 'May',
+            6 => 'June',
+            7 => 'July',
+            8 => 'August',
+            9 => 'September',
+            10 => 'October',
+            11 => 'November',
+            12 => 'December',
+        ];
+        $years = range((int) date('Y') + 10, 2000);
+        $doctors = Enrollment::query()
+            ->select('id', 'doctor_name', 'customer_id_no', 'specialization_id', 'money_rc_no')
+            ->orderBy('doctor_name')
+            ->get();
+        $specializations = Specialization::query()->orderBy('name')->get();
+
+        return view('admin.receipts.index', compact(
+            'receipts',
+            'months',
+            'years',
+            'doctors',
+            'specializations',
+            'searchMonth',
+            'searchYear',
+            'searchText',
+            'summary'
+        ));
+    }
+
+    /**
+     * Store money receipt details against an enrollment record.
+     */
+    public function receiptsStore(Request $request)
+    {
+        $validated = $request->validate([
+            'doctor' => 'required|integer|exists:enrollments,id',
+            'money_reciept_no' => 'required|string|max:50',
+            'money_reciept_year' => 'nullable|integer|min:2000|max:2100',
+            'speciliazition' => 'nullable|integer|exists:specializations,id',
+            'payment_mode' => 'required|string|in:Cash,Cheque,Online',
+            'plan' => 'required|integer|in:1,2,3',
+            'coverage' => 'nullable|integer',
+            'service_amount' => 'nullable|numeric|min:0',
+            'payment_amount' => 'required|numeric|min:0',
+            'payment_process' => 'required|string|in:cash,cheque,Online',
+            'payment_date' => 'nullable|date',
+            'cheque_no' => 'nullable|string|max:100',
+            'payment_bank' => 'nullable|string|max:200',
+            'payment_branch' => 'nullable|string|max:200',
+            'transaction_no' => 'nullable|string|max:100',
+            'money_rc_for' => 'nullable|string|in:renewal,enrollment',
+            'money_remarks' => 'nullable|string|max:255',
+        ]);
+
+        $doctor = Enrollment::findOrFail($validated['doctor']);
+
+        $moneyReceiptNo = $validated['money_reciept_no'];
+        if (!empty($validated['money_reciept_year'])) {
+            $moneyReceiptNo .= '/' . $validated['money_reciept_year'];
+        }
+
+        $methodMap = [
+            'cash' => 2,
+            'cheque' => 1,
+            'Online' => 3,
+        ];
+
+        $paymentDate = null;
+        if (!empty($validated['payment_date'])) {
+            $paymentDate = Carbon::parse($validated['payment_date'])->format('Y-m-d');
+        }
+
+        $doctor->update([
+            'money_rc_no' => $moneyReceiptNo,
+            'specialization_id' => $validated['speciliazition'] ?? $doctor->specialization_id,
+            'payment_mode' => $validated['payment_mode'],
+            'plan' => $validated['plan'],
+            'plan_name' => match ((int) $validated['plan']) {
+                1 => 'Normal',
+                2 => 'High Risk',
+                3 => 'Combo',
+                default => $doctor->plan_name,
+            },
+            'coverage_id' => $validated['coverage'] ?? null,
+            'service_amount' => $validated['service_amount'] ?? 0,
+            'payment_amount' => $validated['payment_amount'],
+            'total_amount' => (float) ($validated['service_amount'] ?? 0) + (float) $validated['payment_amount'],
+            'payment_method' => $methodMap[$validated['payment_process']] ?? null,
+            'payment_cash_date' => $paymentDate,
+            'payment_cheque' => $validated['cheque_no'] ?? null,
+            'payment_bank_name' => $validated['payment_bank'] ?? null,
+            'payment_branch_name' => $validated['payment_branch'] ?? null,
+            'payment_upi_transaction_id' => $validated['transaction_no'] ?? null,
+        ]);
+
+        $this->activityLogService->log(
+            $request,
+            'receipts',
+            'create',
+            $doctor,
+            $doctor->creator,
+            'Added money receipt details for doctor.',
+            [
+                'doctor_name' => $doctor->doctor_name,
+                'money_receipt_no' => $moneyReceiptNo,
+                'money_receipt_for' => $validated['money_rc_for'] ?? null,
+                'remarks' => $validated['money_remarks'] ?? null,
+            ]
+        );
+
+        return redirect()
+            ->route('admin.receipts')
+            ->with('success', 'Money receipt saved successfully.');
+    }
+
+    /**
+     * Edit money receipt details.
+     */
+    public function receiptsEdit($receiptId)
+    {
+        $receipt = Enrollment::query()->findOrFail($receiptId);
+
+        $doctors = Enrollment::query()
+            ->select('id', 'doctor_name', 'customer_id_no', 'specialization_id', 'money_rc_no')
+            ->orderBy('doctor_name')
+            ->get();
+
+        $specializations = Specialization::query()->orderBy('name')->get();
+        $years = range((int) date('Y') + 10, 2000);
+
+        return view('admin.receipts.edit', compact('receipt', 'doctors', 'specializations', 'years'));
+    }
+
+    /**
+     * Update money receipt details.
+     */
+    public function receiptsUpdate(Request $request, $receiptId)
+    {
+        $receipt = Enrollment::query()->findOrFail($receiptId);
+
+        $validated = $request->validate([
+            'doctor' => 'required|integer|exists:enrollments,id',
+            'money_reciept_no' => 'required|string|max:50',
+            'money_reciept_year' => 'nullable|integer|min:2000|max:2100',
+            'speciliazition' => 'nullable|integer|exists:specializations,id',
+            'payment_mode' => 'required|string|in:Cash,Cheque,Online',
+            'plan' => 'required|integer|in:1,2,3',
+            'coverage' => 'nullable|integer',
+            'service_amount' => 'nullable|numeric|min:0',
+            'payment_amount' => 'required|numeric|min:0',
+            'payment_process' => 'required|string|in:cash,cheque,Online',
+            'payment_date' => 'nullable|date',
+            'cheque_no' => 'nullable|string|max:100',
+            'payment_bank' => 'nullable|string|max:200',
+            'payment_branch' => 'nullable|string|max:200',
+            'transaction_no' => 'nullable|string|max:100',
+            'money_rc_for' => 'nullable|string|in:renewal,enrollment',
+            'money_remarks' => 'nullable|string|max:255',
+        ]);
+
+        $doctor = Enrollment::query()->findOrFail($validated['doctor']);
+
+        $moneyReceiptNo = $validated['money_reciept_no'];
+        if (!empty($validated['money_reciept_year'])) {
+            $moneyReceiptNo .= '/' . $validated['money_reciept_year'];
+        }
+
+        $methodMap = [
+            'cash' => 2,
+            'cheque' => 1,
+            'Online' => 3,
+        ];
+
+        $paymentDate = null;
+        if (!empty($validated['payment_date'])) {
+            $paymentDate = Carbon::parse($validated['payment_date'])->format('Y-m-d');
+        }
+
+        $doctor->update([
+            'money_rc_no' => $moneyReceiptNo,
+            'specialization_id' => $validated['speciliazition'] ?? $doctor->specialization_id,
+            'payment_mode' => $validated['payment_mode'],
+            'plan' => $validated['plan'],
+            'plan_name' => match ((int) $validated['plan']) {
+                1 => 'Normal',
+                2 => 'High Risk',
+                3 => 'Combo',
+                default => $doctor->plan_name,
+            },
+            'coverage_id' => $validated['coverage'] ?? null,
+            'service_amount' => $validated['service_amount'] ?? 0,
+            'payment_amount' => $validated['payment_amount'],
+            'total_amount' => (float) ($validated['service_amount'] ?? 0) + (float) $validated['payment_amount'],
+            'payment_method' => $methodMap[$validated['payment_process']] ?? null,
+            'payment_cash_date' => $paymentDate,
+            'payment_cheque' => $validated['cheque_no'] ?? null,
+            'payment_bank_name' => $validated['payment_bank'] ?? null,
+            'payment_branch_name' => $validated['payment_branch'] ?? null,
+            'payment_upi_transaction_id' => $validated['transaction_no'] ?? null,
+        ]);
+
+        $this->activityLogService->log(
+            $request,
+            'receipts',
+            'edit',
+            $doctor,
+            $doctor->creator,
+            'Updated money receipt details for doctor.',
+            [
+                'doctor_name' => $doctor->doctor_name,
+                'money_receipt_no' => $moneyReceiptNo,
+                'money_receipt_for' => $validated['money_rc_for'] ?? null,
+                'remarks' => $validated['money_remarks'] ?? null,
+                'edited_receipt_id' => $receipt->id,
+            ]
+        );
+
+        return redirect()
+            ->route('admin.receipts')
+            ->with('success', 'Money receipt updated successfully.');
+    }
+
+    /**
+     * Legacy endpoint: edit_money_reciept_submit
+     */
+    public function receiptsLegacyUpdate(Request $request)
+    {
+        $receiptId = (int) $request->input('money_rc_id');
+        if ($receiptId <= 0) {
+            return redirect()->route('admin.receipts')->withErrors(['money_rc_id' => 'Invalid money receipt ID.']);
+        }
+
+        return $this->receiptsUpdate($request, $receiptId);
+    }
+
+    /**
+     * JSON endpoint for edit modal prefill.
+     */
+    public function receiptsShowJson($receiptId): JsonResponse
+    {
+        $receipt = Enrollment::query()->findOrFail($receiptId);
+
+        [$receiptNoBase, $receiptNoYear] = $this->extractMoneyReceiptParts($receipt->money_rc_no);
+
+        $paymentProcess = match ((int) $receipt->payment_method) {
+            1 => 'cheque',
+            2 => 'cash',
+            3 => 'Online',
+            default => (!empty($receipt->payment_upi_transaction_id) ? 'Online' : (!empty($receipt->payment_cheque) ? 'cheque' : 'cash')),
+        };
+
+        return response()->json([
+            'success' => true,
+            'receipt' => [
+                'id' => $receipt->id,
+                'doctor' => $receipt->id,
+                'money_reciept_no' => $receiptNoBase,
+                'money_reciept_year' => $receiptNoYear,
+                'membership_no' => $receipt->customer_id_no,
+                'speciliazition' => $receipt->specialization_id,
+                'payment_mode' => $receipt->payment_mode,
+                'plan' => $receipt->plan,
+                'coverage' => $receipt->coverage_id,
+                'service_amount' => (float) ($receipt->service_amount ?? 0),
+                'payment_amount' => (float) ($receipt->payment_amount ?? 0),
+                'total_amount' => (float) ($receipt->total_amount ?? 0),
+                'payment_process' => $paymentProcess,
+                'payment_date' => optional($receipt->payment_cash_date)->format('Y-m-d'),
+                'cheque_no' => $receipt->payment_cheque,
+                'payment_bank' => $receipt->payment_bank_name,
+                'payment_branch' => $receipt->payment_branch_name,
+                'transaction_no' => $receipt->payment_upi_transaction_id,
+                'money_rc_for' => 'enrollment',
+                'money_remarks' => '',
+            ],
+        ]);
+    }
+
+    /**
+     * Render receipt details page for the action View button.
+     */
+    public function receiptsView($receiptId)
+    {
+        $receipt = Enrollment::query()->with('specialization')->findOrFail($receiptId);
+
+        [$receiptNoBase, $receiptNoYear] = $this->extractMoneyReceiptParts($receipt->money_rc_no);
+
+        return view('admin.receipts.view', [
+            'receipt' => $receipt,
+            'receiptNoBase' => $receiptNoBase,
+            'receiptNoYear' => $receiptNoYear,
+        ]);
+    }
+
+    /**
+     * Fetch doctor details for the money receipt modal.
+     */
+    public function receiptDoctorDetails($doctorId): JsonResponse
+    {
+        $doctor = Enrollment::query()
+            ->select('id', 'customer_id_no', 'specialization_id', 'plan', 'coverage_id', 'service_amount', 'payment_amount')
+            ->findOrFail($doctorId);
+
+        return response()->json([
+            'success' => true,
+            'doctor' => $doctor,
+        ]);
+    }
+
+    /**
+     * Export filtered money receipts to CSV.
+     */
+    public function receiptsCsv(Request $request): StreamedResponse
+    {
+        $fileName = 'money-receipt-report-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use ($request) {
+            $output = fopen('php://output', 'w');
+
+            fputcsv($output, [
+                'SL No',
+                'Money Receipt No',
+                'Doctor Name',
+                'Membership No',
+                'Year',
+                'Date',
+                'Amount',
+                'Plan',
+                'Cheque No/Transaction ID',
+                'Bank Details',
+                'Remarks',
+            ]);
+
+            $slNo = 1;
+            foreach ($this->moneyReceiptQuery($request)->cursor() as $receipt) {
+                $planLabel = match ((int) $receipt->plan) {
+                    1 => 'Normal',
+                    2 => 'High Risk',
+                    3 => 'Combo',
+                    default => $receipt->plan_name ?: 'N/A',
+                };
+
+                $transactionId = $receipt->payment_cheque ?: ($receipt->payment_upi_transaction_id ?: 'N/A');
+                $bankDetails = $receipt->payment_bank_name ?: 'N/A';
+                if (!empty($receipt->payment_branch_name)) {
+                    $bankDetails .= ' / ' . $receipt->payment_branch_name;
+                }
+
+                fputcsv($output, [
+                    $slNo++,
+                    $receipt->money_rc_no ?? 'N/A',
+                    $receipt->doctor_name ?? 'N/A',
+                    $receipt->customer_id_no ?? 'N/A',
+                    optional($receipt->created_at)->format('Y') ?? 'N/A',
+                    optional($receipt->created_at)->format('d/m/Y') ?? 'N/A',
+                    filled($receipt->payment_amount) ? 'Rs. ' . number_format((float) $receipt->payment_amount, 0) . '/-' : 'N/A',
+                    $planLabel,
+                    $transactionId,
+                    $bankDetails,
+                    'None',
+                ]);
+            }
+
+            fclose($output);
+        }, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    private function moneyReceiptQuery(Request $request)
+    {
+        $searchMonth = (int) $request->input('search_month', 0);
+        $searchYear = (int) $request->input('search_year', 0);
+        $searchText = trim((string) $request->input('search', ''));
+
+        $query = Enrollment::query()
+            ->with('specialization')
+            ->whereNotNull('money_rc_no')
+            ->where('money_rc_no', '!=', '')
+            ->orderByDesc('created_at');
+
+        if ($searchMonth > 0) {
+            $query->whereMonth('created_at', $searchMonth);
+        }
+
+        if ($searchYear > 0) {
+            $query->whereYear('created_at', $searchYear);
+        }
+
+        if ($searchText !== '') {
+            $query->where(function ($q) use ($searchText) {
+                $q->where('doctor_name', 'like', '%' . $searchText . '%')
+                    ->orWhere('money_rc_no', 'like', '%' . $searchText . '%')
+                    ->orWhere('customer_id_no', 'like', '%' . $searchText . '%')
+                    ->orWhere('mobile1', 'like', '%' . $searchText . '%');
+            });
+        }
+
+        return $query;
+    }
+
+    private function extractMoneyReceiptParts(?string $moneyReceiptNo): array
+    {
+        if (empty($moneyReceiptNo)) {
+            return ['', ''];
+        }
+
+        $parts = explode('/', $moneyReceiptNo, 2);
+
+        return [trim($parts[0] ?? ''), trim($parts[1] ?? '')];
     }
 
     /**

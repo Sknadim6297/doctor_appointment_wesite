@@ -74,12 +74,24 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Bulk Upload
         Route::get('bulk-upload', [BulkUploadController::class, 'index'])->middleware('admin.privilege:doctors,edit')->name('bulk-upload.index');
+        Route::get('bulk-upload/template', [BulkUploadController::class, 'template'])->middleware('admin.privilege:doctors,edit')->name('bulk-upload.template');
         Route::post('bulk-upload', [BulkUploadController::class, 'store'])->middleware('admin.privilege:doctors,edit')->name('bulk-upload.store');
+        Route::post('index.php/doctor_list/bulk_upload_action', [BulkUploadController::class, 'store'])->middleware('admin.privilege:doctors,edit')->name('bulk-upload.legacy-store');
         
         // Money Receipts
-        Route::get('receipts', function () {
-            return view('admin.receipts.index');
-        })->middleware('admin.privilege:receipts,view')->name('receipts');
+        Route::get('receipts', [DoctorController::class, 'receipts'])->middleware('admin.privilege:receipts,view')->name('receipts');
+        Route::get('receipts/csv-report', [DoctorController::class, 'receiptsCsv'])->middleware('admin.privilege:receipts,view')->name('receipts.csv-report');
+        Route::get('receipts/{receipt}/view', [DoctorController::class, 'receiptsView'])->middleware('admin.privilege:receipts,view')->name('receipts.view');
+        Route::get('receipts/{receipt}/json', [DoctorController::class, 'receiptsShowJson'])->middleware('admin.privilege:receipts,view')->name('receipts.json');
+        Route::get('receipts/{receipt}/edit', [DoctorController::class, 'receiptsEdit'])->middleware('admin.privilege:receipts,edit')->name('receipts.edit');
+        Route::put('receipts/{receipt}', [DoctorController::class, 'receiptsUpdate'])->middleware('admin.privilege:receipts,edit')->name('receipts.update');
+        Route::post('receipts', [DoctorController::class, 'receiptsStore'])->middleware('admin.privilege:receipts,edit')->name('receipts.store');
+        Route::get('receipts/doctor/{doctor}', [DoctorController::class, 'receiptDoctorDetails'])->middleware('admin.privilege:receipts,view')->name('receipts.doctor');
+        Route::get('index.php/money_reciept', [DoctorController::class, 'receipts'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-index');
+        Route::post('index.php/money_reciept/money_reciept_search', [DoctorController::class, 'receipts'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-search');
+        Route::get('index.php/money_reciept/money_reciept_csv_report', [DoctorController::class, 'receiptsCsv'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-csv');
+        Route::get('index.php/money_reciept/edit_money_reciept/{receipt}', [DoctorController::class, 'receiptsEdit'])->middleware('admin.privilege:receipts,edit')->name('receipts.legacy-edit');
+        Route::post('index.php/money_reciept/edit_money_reciept_submit', [DoctorController::class, 'receiptsLegacyUpdate'])->middleware('admin.privilege:receipts,edit')->name('receipts.legacy-update');
         
         // Doctor Cases
         Route::get('cases', function () {
@@ -123,11 +135,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
         
         // Doctor Posts
         Route::get('posts', [DoctorPostController::class, 'index'])->middleware('admin.privilege:posts,view')->name('posts');
+        Route::get('posts/{post}/edit', [DoctorPostController::class, 'edit'])->middleware('admin.privilege:posts,edit')->name('posts.edit');
         Route::post('posts', [DoctorPostController::class, 'store'])->middleware('admin.privilege:posts,edit')->name('posts.store');
+        Route::put('posts/{post}', [DoctorPostController::class, 'update'])->middleware('admin.privilege:posts,edit')->name('posts.update');
         Route::delete('posts/{post}', [DoctorPostController::class, 'destroy'])->middleware('admin.privilege:posts,delete')->name('posts.destroy');
 
         // Marketing Call Sheet
         Route::get('call-sheet', [CallSheetController::class, 'index'])->middleware('admin.privilege:doctors,view')->name('call-sheet.index');
+        Route::get('call-sheet/{callSheet}/edit', [CallSheetController::class, 'edit'])->middleware('admin.privilege:doctors,edit')->name('call-sheet.edit');
+        Route::put('call-sheet/{callSheet}', [CallSheetController::class, 'update'])->middleware('admin.privilege:doctors,edit')->name('call-sheet.update');
+        Route::delete('call-sheet/{callSheet}', [CallSheetController::class, 'destroy'])->middleware('admin.privilege:doctors,delete')->name('call-sheet.destroy');
+        Route::get('call-sheet/{callSheet}/pdf', [CallSheetController::class, 'pdf'])->middleware('admin.privilege:doctors,view')->name('call-sheet.pdf');
+        Route::get('call-sheet/{callSheet}/sms', [CallSheetController::class, 'sms'])->middleware('admin.privilege:doctors,edit')->name('call-sheet.sms');
         Route::get('call-sheet/csv', [CallSheetController::class, 'csv'])->middleware('admin.privilege:doctors,view')->name('call-sheet.csv');
         
         // Reports

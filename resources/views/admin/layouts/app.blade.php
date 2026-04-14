@@ -168,7 +168,7 @@
                         <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': accountOpen }"></i>
                     </button>
                     <ul class="tree-menu" x-show="accountOpen" x-transition.opacity x-cloak>
-                        <li><a href="{{ route('admin.receipts') }}" class="{{ request()->routeIs('admin.receipts') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Money Reciept</span></span></a></li>
+                        <li><a href="{{ route('admin.receipts') }}" class="{{ request()->routeIs('admin.receipts') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Money Receipt</span></span></a></li>
                         <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Premium Amount</span></span></a></li>
                         <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Enrollment cheque deposit</span></span></a></li>
                         <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Renewal cheque deposit</span></span></a></li>

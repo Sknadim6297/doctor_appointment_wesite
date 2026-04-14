@@ -48,6 +48,8 @@ class Enrollment extends Model
         'payment_cash_date',
         'bond_to_mail',
         'auto_sms_enabled',
+        'hide_from_call_sheet',
+        'call_sheet_specialization_ids',
         'created_by',
     ];
 
@@ -57,6 +59,8 @@ class Enrollment extends Model
         'payment_cash_date'  => 'date',
         'bond_to_mail'       => 'boolean',
         'auto_sms_enabled'   => 'boolean',
+        'hide_from_call_sheet' => 'boolean',
+        'call_sheet_specialization_ids' => 'array',
         'service_amount'     => 'decimal:2',
         'payment_amount'     => 'decimal:2',
         'total_amount'       => 'decimal:2',

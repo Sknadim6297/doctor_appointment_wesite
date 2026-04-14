@@ -14,7 +14,13 @@ class DoctorPostController extends Controller
 {
     public function index(Request $request)
     {
-        $search = $request->query('search');
+        $search = trim((string) $request->query('search'));
+        $perPage = (int) $request->query('per_page', 10);
+        $allowedPerPage = [10, 25, 50, 100];
+
+        if (!in_array($perPage, $allowedPerPage, true)) {
+            $perPage = 10;
+        }
 
         $posts = DoctorPost::with(['enrollment', 'creator'])
             ->when($search, function ($q) use ($search) {
@@ -26,12 +32,31 @@ class DoctorPostController extends Controller
                 });
             })
             ->orderByDesc('id')
-            ->paginate(15)
+            ->paginate($perPage)
             ->withQueryString();
 
         $doctors = Enrollment::select('id', 'doctor_name', 'money_rc_no')->orderBy('doctor_name')->get();
 
-        return view('admin.posts.index', compact('posts', 'doctors'));
+        return view('admin.posts.index', compact('posts', 'doctors', 'perPage', 'allowedPerPage', 'search'));
+    }
+
+    public function edit(DoctorPost $post)
+    {
+        return response()->json([
+            'success' => true,
+            'post' => [
+                'id' => $post->id,
+                'enrollment_id' => $post->enrollment_id,
+                'doctor_name' => $post->doctor_name,
+                'post_doc_date' => optional($post->post_doc_date)->format('d/m/Y'),
+                'post_doc_consignment_no' => $post->post_doc_consignment_no,
+                'post_doc_by' => $post->post_doc_by,
+                'post_doc_recieved_date' => optional($post->post_doc_recieved_date)->format('d/m/Y'),
+                'post_doc_recieved_by' => $post->post_doc_recieved_by,
+                'post_doc_remark' => $post->post_doc_remark,
+                'tracking_link' => $post->tracking_link,
+            ],
+        ]);
     }
 
     public function store(Request $request)
@@ -70,6 +95,47 @@ class DoctorPostController extends Controller
         ]);
 
         return redirect()->route('admin.posts')->with('success', 'New post added successfully.');
+    }
+
+    public function update(Request $request, DoctorPost $post)
+    {
+        $data = $request->validate([
+            'doctor' => 'required|integer|exists:enrollments,id',
+            'post_doc_date' => 'required|date_format:d/m/Y',
+            'post_doc_consignment_no' => 'required|string|max:255',
+            'post_doc_by' => 'required|string|max:255',
+            'post_doc_recieved_date' => 'required|date_format:d/m/Y',
+            'post_doc_recieved_by' => 'nullable|string|max:255',
+            'post_doc_remark' => 'required|string|max:255',
+            'tracking_link' => 'nullable|url|max:500',
+            'post_doc_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240',
+        ]);
+
+        $enrollment = Enrollment::findOrFail($data['doctor']);
+
+        $filePath = $post->post_doc_file;
+        if ($request->hasFile('post_doc_file')) {
+            if ($post->post_doc_file) {
+                Storage::disk('public')->delete($post->post_doc_file);
+            }
+
+            $filePath = $request->file('post_doc_file')->store('doctor_posts', 'public');
+        }
+
+        $post->update([
+            'enrollment_id' => $enrollment->id,
+            'doctor_name' => $enrollment->doctor_name,
+            'post_doc_date' => Carbon::createFromFormat('d/m/Y', $data['post_doc_date'])->format('Y-m-d'),
+            'post_doc_consignment_no' => $data['post_doc_consignment_no'],
+            'post_doc_by' => $data['post_doc_by'],
+            'post_doc_recieved_date' => Carbon::createFromFormat('d/m/Y', $data['post_doc_recieved_date'])->format('Y-m-d'),
+            'post_doc_recieved_by' => $data['post_doc_recieved_by'] ?? null,
+            'post_doc_remark' => $data['post_doc_remark'],
+            'tracking_link' => $data['tracking_link'] ?? null,
+            'post_doc_file' => $filePath,
+        ]);
+
+        return redirect()->route('admin.posts')->with('success', 'Post updated successfully.');
     }
 
     public function destroy(DoctorPost $post)
