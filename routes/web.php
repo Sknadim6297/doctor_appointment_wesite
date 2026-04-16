@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\InsurancePlanController;
 use App\Http\Controllers\Admin\BulkUploadController;
 use App\Http\Controllers\Admin\DoctorPostController;
 use App\Http\Controllers\Admin\CallSheetController;
+use App\Http\Controllers\Admin\CaseController;
 
 Route::get('/', function () {
     return redirect()->route('admin.login');
@@ -42,6 +43,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Edit / Update enrollment (doctor)
         Route::get('enrollment/{enrollment}/edit', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.edit');
         Route::put('enrollment/{enrollment}', [EnrollmentController::class, 'update'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.update');
+        Route::post('index.php/doctor_list/doctor_edit_action/{doctor}', [EnrollmentController::class, 'updateLegacy'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-update');
         Route::get('enrollment/{enrollment}/step-2', [EnrollmentController::class, 'stepTwo'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.step2');
         Route::get('enrollment/{enrollment}/step-3', [EnrollmentController::class, 'stepThree'])->middleware('admin.privilege:posts,edit')->name('enrollment.step3');
 
@@ -65,7 +67,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Policy Receipt
         Route::get('policy-receipt', [PolicyReceiptController::class, 'index'])->middleware('admin.privilege:policy_receipt,view')->name('policy-receipt.index');
         Route::get('policy-receipt/create', [PolicyReceiptController::class, 'create'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.create');
+        Route::get('index.php/premium_policy/add_policy_received/{doctor}', [PolicyReceiptController::class, 'createForDoctor'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.legacy-create');
         Route::post('policy-receipt', [PolicyReceiptController::class, 'store'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.store');
+        Route::post('index.php/premium_policy/submit_receive_from_page/{doctor}', [PolicyReceiptController::class, 'storeForDoctor'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.legacy-store');
         Route::get('policy-receipt/doctors', [PolicyReceiptController::class, 'doctors'])->middleware('admin.privilege:policy_receipt,view')->name('policy-receipt.doctors');
         Route::get('policy-receipt/{id}', [PolicyReceiptController::class, 'show'])->middleware('admin.privilege:policy_receipt,view')->name('policy-receipt.show');
         Route::get('policy-receipt/{id}/edit', [PolicyReceiptController::class, 'edit'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.edit');
@@ -92,11 +96,23 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('index.php/money_reciept/money_reciept_csv_report', [DoctorController::class, 'receiptsCsv'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-csv');
         Route::get('index.php/money_reciept/edit_money_reciept/{receipt}', [DoctorController::class, 'receiptsEdit'])->middleware('admin.privilege:receipts,edit')->name('receipts.legacy-edit');
         Route::post('index.php/money_reciept/edit_money_reciept_submit', [DoctorController::class, 'receiptsLegacyUpdate'])->middleware('admin.privilege:receipts,edit')->name('receipts.legacy-update');
+
+        // Account Management
+        Route::get('premium-amount', [DoctorController::class, 'premiumAmountIndex'])->middleware('admin.privilege:receipts,view')->name('premium-amount.index');
+        Route::get('index.php/doctor_list/edit_doctor/{doctor}', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-edit');
+        Route::get('index.php/renewal_list/renewal/{doctor}/{renewType?}', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-renewal');
         
         // Doctor Cases
-        Route::get('cases', function () {
-            return view('admin.cases.index');
-        })->middleware('admin.privilege:cases,view')->name('cases');
+        Route::get('cases', [CaseController::class, 'index'])->middleware('admin.privilege:cases,view')->name('cases');
+        Route::get('index.php/case_list', [CaseController::class, 'index'])->middleware('admin.privilege:cases,view')->name('cases.legacy-index');
+        Route::post('cases', [CaseController::class, 'store'])->middleware('admin.privilege:cases,edit')->name('cases.store');
+        Route::put('cases/{legalCase}', [CaseController::class, 'update'])->middleware('admin.privilege:cases,edit')->name('cases.update');
+        Route::delete('cases/{legalCase}', [CaseController::class, 'destroy'])->middleware('admin.privilege:cases,delete')->name('cases.destroy');
+        Route::get('cases/{legalCase}/json', [CaseController::class, 'showJson'])->middleware('admin.privilege:cases,view')->name('cases.json');
+        Route::get('index.php/case_list/edit_case/{legalCase}', [CaseController::class, 'showJson'])->middleware('admin.privilege:cases,view')->name('cases.legacy-edit');
+        Route::post('index.php/case_list/submit_case', [CaseController::class, 'store'])->middleware('admin.privilege:cases,edit')->name('cases.legacy-store');
+        Route::post('index.php/case_list/edit_case_submit/{legalCase}', [CaseController::class, 'update'])->middleware('admin.privilege:cases,edit')->name('cases.legacy-update');
+        Route::post('index.php/case_list/delete_case/{legalCase}', [CaseController::class, 'destroy'])->middleware('admin.privilege:cases,delete')->name('cases.legacy-destroy');
         
         // Lapse List
         Route::get('lapse', function () {

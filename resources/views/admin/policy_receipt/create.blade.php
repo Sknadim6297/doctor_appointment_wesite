@@ -9,7 +9,7 @@
         <h3 class="section-title">Add Policy Received</h3>
     </div>
 
-    <form action="{{ route('admin.policy-receipt.store') }}" method="POST" accept-charset="utf-8" class="form-horizontal" id="add_received_form" enctype="multipart/form-data">
+    <form action="{{ $submitRoute ?? route('admin.policy-receipt.store') }}" method="POST" accept-charset="utf-8" class="form-horizontal" id="add_received_form" enctype="multipart/form-data">
         @csrf
         <div class="modal-header">
             <h3>Submit new policy received</h3>
@@ -19,10 +19,10 @@
                 <div class="control-group" id="edit_discount_control">
                     <label class="control-label">Doctor</label>
                     <div class="controls">
-                        <select style="width:100%" id="doctor" class="form-control select2" name="doctor" onchange="retrive_renewed_date(this.value);">
-                            <option value="0" selected>--Select doctor--</option>
-                            @foreach($doctors as $d)
-                                <option value="{{ $d->id }}">{{ $d->doctor_name }}{{ $d->money_rc_no ? ' (' . $d->money_rc_no . ')' : '' }}</option>
+                            <select id="doctor" class="form-control select2" name="doctor">
+                                <option value="0" {{ empty($selectedDoctor) ? 'selected' : '' }}>--Select doctor--</option>
+                            @foreach($doctors as $doctor)
+                                <option value="{{ $doctor->id }}" {{ isset($selectedDoctor) && (int) $selectedDoctor->id === (int) $doctor->id ? 'selected' : '' }}>{{ $doctor->doctor_name }}{{ $doctor->money_rc_no ? ' (' . $doctor->money_rc_no . ')' : '' }}</option>
                             @endforeach
                         </select>
                     </div>

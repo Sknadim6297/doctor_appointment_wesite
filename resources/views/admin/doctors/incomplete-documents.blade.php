@@ -266,13 +266,13 @@
                                     <a href="{{ route('admin.doctors.show', $doctor->id) }}" class="doc-btn doc-btn-view" title="View">
                                         <i class="ri-eye-line"></i>
                                     </a>
-                                    <a href="{{ route('admin.enrollment.edit', $doctor->id) }}" class="doc-btn doc-btn-edit" title="Edit">
+                                    <a href="{{ route('admin.enrollment.legacy-edit', $doctor->id) }}" class="doc-btn doc-btn-edit" title="Edit">
                                         <i class="ri-edit-2-line"></i>
                                     </a>
                                     <a target="_blank" href="{{ route('admin.doctors.show', $doctor->id) }}?tab=doctor_documents" class="doc-btn doc-btn-doc" title="Document">
                                         <i class="ri-file-line"></i>
                                     </a>
-                                    <a href="{{ route('admin.enrollment.edit', $doctor->id) }}" class="doc-btn doc-btn-renew" title="Renew">
+                                    <a href="{{ route('admin.enrollment.legacy-renewal', ['doctor' => $doctor->id, 'renewType' => 'renewal']) }}" class="doc-btn doc-btn-renew" title="Renew">
                                         <b style="font-size: 1.05em;">R</b>
                                     </a>
                                     <button type="button" class="doc-btn doc-btn-doc" title="Send mail" onclick="sendMail({{ $doctor->id }}, @js($doctor->doctor_email))">
@@ -304,6 +304,8 @@
 </div>
 
 <script>
+const csrfToken = '{{ csrf_token() }}';
+
 function check_all() {
     const master = document.getElementById('all_chk');
     document.querySelectorAll('input[name="record"]').forEach(function (checkbox) {
@@ -322,7 +324,7 @@ function change_auto_mail_status(doctorId) {
     fetch(`/admin/doctors/${doctorId}/toggle-auto-email`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({ enabled: !currentEnabled })
@@ -344,7 +346,7 @@ function change_auto_sms_status(doctorId) {
     fetch(`/admin/doctors/${doctorId}/toggle-auto-sms`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({ enabled: !currentEnabled })
@@ -368,7 +370,7 @@ function sendMail(doctorId, email) {
     fetch(`/admin/doctors/${doctorId}/send-mail`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         }
     })
@@ -386,7 +388,7 @@ function sendSms(doctorId, phone) {
     fetch(`/admin/doctors/${doctorId}/send-sms`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         }
     })

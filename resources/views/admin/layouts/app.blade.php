@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Dashboard') - MediForum Admin</title>
     <link rel="icon" type="image/jpeg" href="{{ asset('assets/images/mediforum-logo.jpeg') }}">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
@@ -20,7 +21,7 @@
                  doctorOpen: @json(request()->routeIs('admin.enrollment*') || request()->routeIs('admin.doctors*')),
                       policyOpen: @json(request()->routeIs('admin.policy-receipt.*')),
                       renewOpen: false,
-                      legalOpen: @json(request()->routeIs('admin.cases')),
+                     legalOpen: @json(request()->routeIs('admin.cases*')),
                       accountOpen: @json(request()->routeIs('admin.receipts')),
                       marketingOpen: @json(request()->routeIs('admin.call-sheet.*')),
                       dispatchedOpen: @json(request()->routeIs('admin.posts*')),
@@ -147,7 +148,7 @@
                 </div>
 
                 <div class="treeview">
-                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.cases') ? 'active' : '' }}" @click="toggleMenu('legal')">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.cases*') ? 'active' : '' }}" @click="toggleMenu('legal')">
                         <span class="flex items-center gap-3">
                             <i class="ri-scales-3-line"></i>
                             <span>Legal case management</span>
@@ -155,7 +156,7 @@
                         <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': legalOpen }"></i>
                     </button>
                     <ul class="tree-menu" x-show="legalOpen" x-transition.opacity x-cloak>
-                        <li><a href="{{ route('admin.cases') }}" class="{{ request()->routeIs('admin.cases') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Case List</span></span></a></li>
+                        <li><a href="{{ route('admin.cases') }}" class="{{ request()->routeIs('admin.cases*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Case List</span></span></a></li>
                     </ul>
                 </div>
 
@@ -169,7 +170,7 @@
                     </button>
                     <ul class="tree-menu" x-show="accountOpen" x-transition.opacity x-cloak>
                         <li><a href="{{ route('admin.receipts') }}" class="{{ request()->routeIs('admin.receipts') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Money Receipt</span></span></a></li>
-                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Premium Amount</span></span></a></li>
+                        <li><a href="{{ route('admin.premium-amount.index') }}" class="{{ request()->routeIs('admin.premium-amount.*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Premium Amount</span></span></a></li>
                         <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Enrollment cheque deposit</span></span></a></li>
                         <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Renewal cheque deposit</span></span></a></li>
                         <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense category</span></span></a></li>

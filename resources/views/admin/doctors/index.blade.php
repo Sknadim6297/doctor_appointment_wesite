@@ -241,7 +241,7 @@
                                 <a href="{{ route('admin.doctors.show', $doctor->id) }}" class="doctor-action-btn doctor-action-btn-view" title="View Details" onclick="event.stopPropagation();">
                                     <i class="ri-eye-line"></i>
                                 </a>
-                                <a href="{{ route('admin.enrollment.edit', $doctor->id) }}" class="doctor-action-btn doctor-action-btn-edit" title="Edit" onclick="event.stopPropagation();">
+                                <a href="{{ route('admin.enrollment.legacy-edit', $doctor->id) }}" class="doctor-action-btn doctor-action-btn-edit" title="Edit" onclick="event.stopPropagation();">
                                     <i class="ri-pencil-line"></i>
                                 </a>
                                 <a target="_blank" href="{{ route('admin.doctors.show', $doctor->id) }}?tab=doctor_documents" class="doctor-action-btn doctor-action-btn-doc" title="Document" onclick="event.stopPropagation();">
@@ -283,9 +283,12 @@
 </div>
 
 <script>
+const csrfToken = '{{ csrf_token() }}';
+const renewalBaseUrl = @json(url('admin/index.php/renewal_list/renewal'));
+
 function renewDoctor(doctorId) {
     if (confirm('Are you sure you want to renew this doctor?')) {
-        alert('Renewal functionality to be implemented');
+        window.location.href = `${renewalBaseUrl}/${doctorId}/renewal`;
     }
 }
 
@@ -298,7 +301,7 @@ function sendMail(doctorId, email) {
     fetch(`/admin/doctors/${doctorId}/send-mail`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         }
     })
@@ -316,7 +319,7 @@ function sendSms(doctorId, phone) {
     fetch(`/admin/doctors/${doctorId}/send-sms`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         }
     })
@@ -334,7 +337,7 @@ function resendBond(doctorId, email) {
     fetch(`/admin/doctors/${doctorId}/resend-bond`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         }
     })
@@ -352,7 +355,7 @@ function resendReceipt(doctorId, email) {
     fetch(`/admin/doctors/${doctorId}/resend-receipt`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         }
     })

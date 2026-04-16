@@ -61,12 +61,33 @@ class PolicyReceiptController extends Controller
 
     public function create()
     {
+        $doctorId = (int) request()->query('doctor', 0);
+
         $doctors = Enrollment::query()
             ->select('id', 'doctor_name', 'money_rc_no', 'customer_id_no')
             ->orderBy('doctor_name')
             ->get();
 
-        return view('admin.policy_receipt.create', compact('doctors'));
+        $selectedDoctor = $doctorId > 0 ? Enrollment::find($doctorId) : null;
+        $submitRoute = request()->routeIs('admin.policy-receipt.legacy-create') && $doctorId > 0
+            ? route('admin.policy-receipt.legacy-store', $doctorId)
+            : route('admin.policy-receipt.store');
+
+        return view('admin.policy_receipt.create', compact('doctors', 'selectedDoctor', 'submitRoute'));
+    }
+
+    public function createForDoctor($doctorId)
+    {
+        request()->merge(['doctor' => $doctorId]);
+
+        return $this->create();
+    }
+
+    public function storeForDoctor(Request $request, $doctorId)
+    {
+        $request->merge(['doctor' => $doctorId]);
+
+        return $this->store($request);
     }
 
     public function store(Request $request)

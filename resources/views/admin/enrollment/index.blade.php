@@ -291,6 +291,8 @@
 </div>
 
 <script>
+const csrfToken = '{{ csrf_token() }}';
+
 function renewDoctor(doctorId) {
     if (confirm('Are you sure you want to renew this doctor?')) {
         alert('Renewal functionality to be implemented');
@@ -305,7 +307,7 @@ function sendMail(doctorId, email) {
     fetch(`/admin/doctors/${doctorId}/send-mail`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         }
     })
@@ -322,7 +324,7 @@ function sendSms(doctorId, phone) {
     fetch(`/admin/doctors/${doctorId}/send-sms`, {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'X-CSRF-TOKEN': csrfToken,
             'Content-Type': 'application/json'
         }
     })
@@ -333,13 +335,13 @@ function sendSms(doctorId, phone) {
 
 function resendBond(doctorId, email) {
     if (!email) { alert('No email address on file for this doctor.'); return; }
-    fetch(`/admin/doctors/${doctorId}/resend-bond`, { method: 'POST', headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, 'Content-Type': 'application/json' } })
+    fetch(`/admin/doctors/${doctorId}/resend-bond`, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/json' } })
     .then(r => r.json()).then(data => alert(data.message)).catch(err => alert('Error: ' + err.message));
 }
 
 function resendReceipt(doctorId, email) {
     if (!email) { alert('No email address on file for this doctor.'); return; }
-    fetch(`/admin/doctors/${doctorId}/resend-receipt`, { method: 'POST', headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, 'Content-Type': 'application/json' } })
+    fetch(`/admin/doctors/${doctorId}/resend-receipt`, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/json' } })
     .then(r => r.json()).then(data => alert(data.message)).catch(err => alert('Error: ' + err.message));
 }
 </script>

@@ -35,7 +35,7 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ $enrollment ? route('admin.enrollment.update', optional($enrollment)->id) : route('admin.enrollment.store') }}" id="enrollmentForm" novalidate>
+    <form method="POST" action="{{ $submitRoute ?? ($enrollment ? route('admin.enrollment.update', optional($enrollment)->id) : route('admin.enrollment.store')) }}" id="enrollmentForm" novalidate>
         @csrf
         @if($enrollment)
             @method('PUT')

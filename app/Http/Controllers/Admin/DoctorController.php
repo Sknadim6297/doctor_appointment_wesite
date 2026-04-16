@@ -3,7 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\ComboPlan;
+use App\Models\DoctorPost;
 use App\Models\Enrollment;
+use App\Models\LegalCase;
+use App\Models\HighRiskPlan;
+use App\Models\NormalPlan;
+use App\Models\PolicyReceipt;
 use App\Models\Specialization;
 use App\Services\ActivityLogService;
 use App\Services\SecurityAlertService;
@@ -81,6 +87,36 @@ class DoctorController extends Controller
     }
 
     /**
+     * Display the premium amount index under Account Management.
+     */
+    public function premiumAmountIndex(Request $request)
+    {
+        $search = trim((string) $request->input('search', ''));
+
+        $doctors = Enrollment::query()
+            ->with('specialization')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($innerQuery) use ($search) {
+                    $innerQuery->where('doctor_name', 'like', '%' . $search . '%')
+                        ->orWhere('money_rc_no', 'like', '%' . $search . '%')
+                        ->orWhere('customer_id_no', 'like', '%' . $search . '%')
+                        ->orWhere('mobile1', 'like', '%' . $search . '%');
+                });
+            })
+            ->orderByDesc('created_at')
+            ->paginate(25)
+            ->appends($request->query());
+
+        $planCoverageMaps = [
+            1 => NormalPlan::query()->select('id', 'coverage_lakh', 'yearly_amount')->orderByDesc('id')->get()->keyBy('id'),
+            2 => HighRiskPlan::query()->select('id', 'coverage_lakh', 'yearly_amount')->orderByDesc('id')->get()->keyBy('id'),
+            3 => ComboPlan::query()->select('id', 'coverage_lakh', 'yearly_amount')->orderByDesc('id')->get()->keyBy('id'),
+        ];
+
+        return view('admin.account-management.premium-amount', compact('doctors', 'search', 'planCoverageMaps'));
+    }
+
+    /**
      * Display the specified doctor details.
      */
     public function show($id)
@@ -122,7 +158,52 @@ class DoctorController extends Controller
             default => 'Unknown'
         };
 
-        return view('admin.doctors.show', compact('doctor', 'planName', 'renewalDate', 'renewalStatus', 'daysUntilRenewal'));
+        $posts = DoctorPost::query()
+            ->where('enrollment_id', $doctor->id)
+            ->latest('id')
+            ->take(25)
+            ->get();
+
+        $policyReceipts = PolicyReceipt::query()
+            ->where(function ($query) use ($doctor) {
+                $query->where('enrollment_id', $doctor->id)
+                    ->orWhere('doctor_name', $doctor->doctor_name);
+            })
+            ->latest('id')
+            ->take(25)
+            ->get();
+
+        $cases = LegalCase::query()
+            ->where(function ($query) use ($doctor) {
+                $query->where('enrollment_id', $doctor->id)
+                    ->orWhere('doctor_name', $doctor->doctor_name);
+            })
+            ->latest('id')
+            ->take(25)
+            ->get();
+
+        $activeTab = match ((string) request()->query('tab', 'details')) {
+            'doctor_documents' => 'documents',
+            'case_tab' => 'cases',
+            'doctor_policy_tab' => 'policies',
+            'post_tab' => 'posts',
+            'premium_send' => 'premium',
+            'money_reciept_tab', 'money_reciept' => 'receipts',
+            'prev_bond_tab', 'prev_bond' => 'bonds',
+            default => 'details',
+        };
+
+        return view('admin.doctors.show', compact(
+            'doctor',
+            'planName',
+            'renewalDate',
+            'renewalStatus',
+            'daysUntilRenewal',
+            'posts',
+            'cases',
+            'policyReceipts',
+            'activeTab'
+        ));
     }
 
     /**

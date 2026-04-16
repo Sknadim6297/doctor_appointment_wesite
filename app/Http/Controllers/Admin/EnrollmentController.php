@@ -344,7 +344,12 @@ class EnrollmentController extends Controller
             'defaultCountryId',
             'defaultStateId',
             'defaultCityId'
-        ))->with('enrollment', $enrollment);
+        ))->with([
+            'enrollment' => $enrollment,
+            'submitRoute' => request()->routeIs('admin.enrollment.legacy-edit')
+                ? route('admin.enrollment.legacy-update', $enrollment->id)
+                : route('admin.enrollment.update', $enrollment->id),
+        ]);
     }
 
     /**
@@ -401,6 +406,11 @@ class EnrollmentController extends Controller
         $enrollment->update($validated);
 
         return redirect()->route('admin.enrollment')->with('success', 'Enrollment updated successfully.');
+    }
+
+    public function updateLegacy(Request $request, $id)
+    {
+        return $this->update($request, $id);
     }
 
     public function stepTwo(Enrollment $enrollment)
