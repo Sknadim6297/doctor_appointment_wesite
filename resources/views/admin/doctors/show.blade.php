@@ -34,7 +34,40 @@
 
     .mini-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
     .mini-table th, .mini-table td { border: 1px solid #dbe3ee; padding: 0.45rem 0.5rem; vertical-align: top; }
-    .mini-table th { background: #1e3a8a; color: #fff; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.02em; }
+    .legacy-card {
+        --mini-table-head-align: center;
+        --mini-table-cell-align: center;
+    }
+    .mini-table th {
+        background: #1e3a8a;
+        color: #fff;
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        text-align: var(--mini-table-head-align);
+    }
+    .mini-table td { text-align: var(--mini-table-cell-align); }
+
+    /* Alignment customization helpers: apply these on a wrapper or on the table itself. */
+    .table-align-left,
+    [data-table-align="left"] {
+        --mini-table-head-align: left;
+        --mini-table-cell-align: left;
+    }
+    .table-align-center,
+    [data-table-align="center"] {
+        --mini-table-head-align: center;
+        --mini-table-cell-align: center;
+    }
+    .table-align-right,
+    [data-table-align="right"] {
+        --mini-table-head-align: right;
+        --mini-table-cell-align: right;
+    }
+    .legacy-tab-panel { overflow-x: auto; }
+    .legacy-tab-panel .mini-table { min-width: 980px; }
+    .legacy-tab-panel .mini-table th,
+    .legacy-tab-panel .mini-table td { white-space: nowrap; }
     .empty-note { padding: 1rem; border: 1px dashed #cbd5e1; border-radius: 8px; color: #64748b; background: #f8fafc; }
 
     .modal-backdrop-lite { position: fixed; inset: 0; background: rgba(2, 6, 23, 0.65); display: none; align-items: center; justify-content: center; z-index: 80; padding: 1rem; }
@@ -293,9 +326,9 @@
 
             <div id="tab-posts" class="legacy-tab-panel">
                 <div class="mb-3">
-                    <a href="{{ route('admin.posts') }}" class="qbtn qbtn-blue"><i class="ri-add-line"></i> New Post</a>
+                    <a href="{{ route('admin.posts') }}" class="qbtn qbtn-blue"><i class="ri-add-line"></i> + New Post</a>
                 </div>
-                <h4 class="text-sm font-bold text-slate-900 mb-3">Dispatched post documents</h4>
+                <h4 class="text-sm font-bold text-slate-900 mb-3">Dispatched Post</h4>
                 @php
                     $dispatchedPosts = $posts->filter(function ($post) {
                         return !empty($post->post_doc_file) || !empty($post->post_doc_consignment_no) || !empty($post->post_doc_remark);
@@ -305,31 +338,58 @@
                     <thead>
                         <tr>
                             <th>SL No</th>
-                            <th>Document</th>
-                            <th>Title</th>
-                            <th>Document year</th>
-                            <th>Uploaded by</th>
+                            <th>Date of post</th>
+                            <th>Doctor name</th>
+                            <th>Document name</th>
+                            <th>Consignment no.</th>
+                            <th>Post by</th>
+                            <th>Recieved by</th>
+                            <th>Recieved date</th>
+                            <th>Created by</th>
                             <th>Remark</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($dispatchedPosts as $post)
+                            @php
+                                $createdByName = trim((string) ($post->creator?->name ?? ''));
+                                if ($createdByName === '') {
+                                    $first = trim((string) ($post->creator?->first_name ?? ''));
+                                    $last = trim((string) ($post->creator?->last_name ?? ''));
+                                    $createdByName = trim($first . ' ' . $last);
+                                }
+                                if ($createdByName === '') {
+                                    $createdByName = 'System';
+                                }
+                            @endphp
                             <tr>
                                 <td>{{ $loop->iteration }}</td>
-                                <td>{{ $post->post_doc_file ? strtoupper(pathinfo($post->post_doc_file, PATHINFO_EXTENSION) ?: 'FILE') : 'N/A' }}</td>
-                                <td>{{ $post->post_doc_consignment_no ?? $post->post_doc_remark ?? 'N/A' }}</td>
-                                <td>{{ optional($post->post_doc_date)->format('Y') ?? 'N/A' }}</td>
-                                <td>{{ $post->creator->name ?? 'Super Admin' }}</td>
+                                <td>{{ optional($post->post_doc_date)->format('d/m/Y') ?? 'N/A' }}</td>
+                                <td>{{ $post->doctor_name ?? ($doctor->doctor_name ?? 'N/A') }}</td>
+                                <td>{{ $post->post_doc_file ? basename($post->post_doc_file) : 'N/A' }}</td>
+                                <td>{{ $post->post_doc_consignment_no ?? 'N/A' }}</td>
+                                <td>{{ $post->post_doc_by ?? 'N/A' }}</td>
+                                <td>{{ $post->post_doc_recieved_by ?? 'N/A' }}</td>
+                                <td>{{ optional($post->post_doc_recieved_date)->format('d/m/Y') ?? 'N/A' }}</td>
+                                <td>{{ $createdByName }}</td>
                                 <td>{{ $post->post_doc_remark ?? 'N/A' }}</td>
                                 <td>
-                                    @if($post->post_doc_file)
-                                        <a href="{{ Storage::url($post->post_doc_file) }}" class="qbtn qbtn-green" target="_blank" title="View"><i class="ri-eye-line"></i></a>
-                                    @endif
+                                    <div class="flex flex-wrap gap-1">
+                                        @if($post->post_doc_file)
+                                            <a href="{{ Storage::url($post->post_doc_file) }}" class="qbtn qbtn-green" target="_blank" title="View"><i class="ri-eye-line"></i></a>
+                                        @endif
+                                        <a href="{{ route('admin.posts', ['search' => $doctor->doctor_name]) }}" class="qbtn qbtn-blue" title="Edit"><i class="ri-pencil-line"></i></a>
+                                        <form method="POST" action="{{ route('admin.posts.destroy', $post) }}" onsubmit="return confirm('Delete this post record?');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="qbtn qbtn-red" title="Delete"><i class="ri-delete-bin-line"></i></button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="7">No dispatched post data available.</td></tr>
+                            <tr><td colspan="11">No dispatched post data available.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -340,53 +400,145 @@
                     <a href="{{ route('admin.premium-amount.index', ['search' => $doctor->doctor_name]) }}" class="qbtn qbtn-blue"><i class="ri-money-dollar-circle-line"></i> Premium list</a>
                     <a href="{{ route('admin.policy-receipt.legacy-create', $doctor->id) }}" class="qbtn qbtn-green"><i class="ri-file-add-line"></i> Submit policy received</a>
                 </div>
-                <table class="mini-table">
-                    <thead>
-                        <tr>
-                            <th>Doctor</th>
-                            <th>Renewal date</th>
-                            <th>Premium amount</th>
-                            <th>Policy received count</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>{{ $doctor->doctor_name ?? 'N/A' }}</td>
-                            <td>{{ $renewalDate->format('d/m/Y') }}</td>
-                            <td>Rs. {{ number_format((float)($doctor->service_amount ?? 0), 0) }}</td>
-                            <td>{{ $policyReceipts->count() }}</td>
-                        </tr>
-                    </tbody>
-                </table>
+
+                <div class="mb-6">
+                    <h4 class="text-sm font-bold text-slate-900 mb-3">Premium send</h4>
+                    @php
+                        $premiumPosts = $posts->filter(function ($post) {
+                            return !empty($post->post_doc_file) || !empty($post->post_doc_date) || !empty($post->post_doc_remark);
+                        })->values();
+                    @endphp
+                    <table class="mini-table">
+                        <thead>
+                            <tr>
+                                <th>SL No</th>
+                                <th>Doctor</th>
+                                <th>Renewal date</th>
+                                <th>Premium amount</th>
+                                <th>Send date</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($premiumPosts as $post)
+                                <tr>
+                                    <td>{{ $loop->iteration }}</td>
+                                    <td>{{ $doctor->doctor_name ?? 'N/A' }}</td>
+                                    <td>{{ $renewalDate->format('d/m/Y') }}</td>
+                                    <td>Rs. {{ number_format((float)($doctor->service_amount ?? 0), 0) }}</td>
+                                    <td>{{ optional($post->post_doc_date)->format('d/m/Y') ?? optional($post->created_at)->format('d/m/Y') ?? 'N/A' }}</td>
+                                    <td>
+                                        <div class="flex flex-wrap gap-1">
+                                            @if($post->post_doc_file)
+                                                <a target="_blank" class="qbtn qbtn-green" title="View" href="{{ asset('storage/' . $post->post_doc_file) }}"><i class="ri-eye-line"></i></a>
+                                            @endif
+                                            <a class="qbtn qbtn-blue" title="Edit" href="{{ route('admin.posts', ['search' => $doctor->doctor_name]) }}"><i class="ri-pencil-line"></i></a>
+                                            <form method="POST" action="{{ route('admin.posts.destroy', $post) }}" onsubmit="return confirm('Delete this premium send record?');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="qbtn qbtn-red" title="Delete"><i class="ri-delete-bin-line"></i></button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6">
+                                        <div class="empty-note">No premium send data available.</div>
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <h4 class="text-sm font-bold text-slate-900 mb-3">Policy received</h4>
+                    <table class="mini-table">
+                        <thead>
+                            <tr>
+                                <th>SL No</th>
+                                <th>Policy no.</th>
+                                <th>Doctor</th>
+                                <th>Receive date</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($policyReceipts as $policy)
+                                <tr>
+                                    <td>{{ $loop->iteration }}</td>
+                                    <td>{{ $policy->policy_no ?? 'N/A' }}</td>
+                                    <td>{{ $policy->doctor_name ?? ($doctor->doctor_name ?? 'N/A') }}</td>
+                                    <td>{{ optional($policy->receive_date)->format('d/m/Y') ?? 'N/A' }}</td>
+                                    <td>
+                                        <div class="flex flex-wrap gap-1">
+                                            <a class="qbtn qbtn-green" title="View" target="_blank" href="{{ route('admin.policy-receipt.show', $policy->id) }}"><i class="ri-eye-line"></i></a>
+                                            <a class="qbtn qbtn-blue" title="Edit" href="{{ route('admin.policy-receipt.edit', $policy->id) }}"><i class="ri-pencil-line"></i></a>
+                                            <form method="POST" action="{{ route('admin.policy-receipt.destroy', $policy->id) }}" onsubmit="return confirm('Delete this policy received record?');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="qbtn qbtn-red" title="Delete"><i class="ri-delete-bin-line"></i></button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="5">
+                                        <div class="empty-note">No policy received data available.</div>
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div id="tab-receipts" class="legacy-tab-panel">
                 <div class="mb-3">
-                    <a href="{{ route('admin.receipts') }}?search={{ urlencode($doctor->doctor_name ?? '') }}" class="qbtn qbtn-blue"><i class="ri-add-line"></i> Add / Edit money receipt</a>
+                    <a href="{{ route('admin.receipts') }}?search={{ urlencode($doctor->doctor_name ?? '') }}" class="qbtn qbtn-blue"><i class="ri-add-line"></i> + Add money receipt</a>
                 </div>
                 <table class="mini-table">
                     <thead>
                         <tr>
+                            <th>SL No</th>
                             <th>Money receipt no.</th>
                             <th>Dr. name</th>
                             <th>Mem. no</th>
                             <th>Payment AMT</th>
+                            <th>Year</th>
+                            <th>DT</th>
                             <th>Ins amt</th>
+                            <th>Mem amt</th>
                             <th>Plan</th>
+                            <th>Cheque no.</th>
+                            <th>Bank</th>
+                            <th>Remarks</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
+                            <td>1</td>
                             <td>{{ $doctor->money_rc_no ?? 'Pending' }}</td>
                             <td>{{ $doctor->doctor_name ?? 'N/A' }}</td>
                             <td>{{ $doctor->customer_id_no ?? 'N/A' }}</td>
                             <td>Rs. {{ number_format((float)($doctor->payment_amount ?? 0), 0) }}</td>
+                            <td>{{ optional($doctor->payment_cash_date)->format('Y') ?? 'N/A' }}</td>
+                            <td>{{ optional($doctor->payment_cash_date)->format('d/m/Y') ?? 'N/A' }}</td>
                             <td>Rs. {{ number_format((float)($doctor->service_amount ?? 0), 0) }}</td>
+                            <td>Rs. {{ number_format((float)(($doctor->payment_amount ?? 0) - ($doctor->service_amount ?? 0)), 0) }}</td>
                             <td>{{ $planName }}</td>
+                            <td>{{ $doctor->cheque_no ?? 'N/A' }}</td>
+                            <td>{{ $doctor->bank_name ?? 'N/A' }}</td>
+                            <td>{{ $doctor->payment_remarks ?? 'N/A' }}</td>
                             <td>
                                 @if($doctor->money_rc_no)
-                                    <a href="{{ route('admin.receipts.view', $doctor->id) }}" target="_blank" class="qbtn qbtn-green"><i class="ri-eye-line"></i></a>
+                                    <div class="flex flex-wrap gap-1">
+                                        <a href="{{ route('admin.receipts.view', $doctor->id) }}" target="_blank" class="qbtn qbtn-green" title="View"><i class="ri-eye-line"></i></a>
+                                        <a href="{{ route('admin.receipts') }}?search={{ urlencode($doctor->doctor_name ?? '') }}" class="qbtn qbtn-blue" title="Edit"><i class="ri-pencil-line"></i></a>
+                                    </div>
                                 @else
                                     N/A
                                 @endif
