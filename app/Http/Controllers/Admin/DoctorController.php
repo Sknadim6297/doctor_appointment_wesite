@@ -88,6 +88,39 @@ class DoctorController extends Controller
     }
 
     /**
+     * Display membership number listing.
+     */
+    public function membershipNumbers(Request $request)
+    {
+        $search = trim((string) $request->input('search', ''));
+
+        $this->activityLogService->log(
+            $request,
+            'doctors',
+            'view',
+            description: 'Viewed membership numbers listing.',
+            metadata: ['search' => $search]
+        );
+
+        $memberships = Enrollment::query()
+            ->select('id', 'doctor_name', 'mobile1', 'customer_id_no')
+            ->whereNotNull('customer_id_no')
+            ->where('customer_id_no', '!=', '')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($innerQuery) use ($search) {
+                    $innerQuery->where('doctor_name', 'like', '%' . $search . '%')
+                        ->orWhere('mobile1', 'like', '%' . $search . '%')
+                        ->orWhere('customer_id_no', 'like', '%' . $search . '%');
+                });
+            })
+            ->orderByDesc('created_at')
+            ->paginate(25)
+            ->appends($request->query());
+
+        return view('admin.doctors.membership-nos', compact('memberships', 'search'));
+    }
+
+    /**
      * Display the premium amount index under Account Management.
      */
     public function premiumAmountIndex(Request $request)

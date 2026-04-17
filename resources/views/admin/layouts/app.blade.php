@@ -116,7 +116,7 @@
                         <li><a href="{{ route('admin.enrollment.create') }}" class="{{ request()->routeIs('admin.enrollment.create') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-user-add-line"></i><span>Enrollment Entry</span></span></a></li>
                         <li><a href="{{ route('admin.enrollment') }}" class="{{ request()->routeIs('admin.enrollment*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Doctor List</span></span></a></li>
                         <li><a href="{{ route('admin.doctors.incomplete-documents') }}" class="{{ request()->routeIs('admin.doctors.incomplete-documents') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-file-warning-line"></i><span>Incomplete Docs</span></span></a></li>
-                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Membership nos.</span></span></a></li>
+                        <li><a href="{{ route('admin.doctors.membership-nos') }}" class="{{ request()->routeIs('admin.doctors.membership-nos') || request()->routeIs('admin.doctors.membership-nos.legacy') || request()->routeIs('admin.doctors.membership-search.legacy') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Membership nos.</span></span></a></li>
                     </ul>
                 </div>
 

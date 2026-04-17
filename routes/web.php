@@ -50,8 +50,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Doctor Management
         Route::get('doctors', [DoctorController::class, 'index'])->middleware('admin.privilege:doctors,view')->name('doctors.index');
+        Route::get('doctors/membership-nos', [DoctorController::class, 'membershipNumbers'])->middleware('admin.privilege:doctors,view')->name('doctors.membership-nos');
         Route::get('doctors/incomplete-documents', [DoctorController::class, 'incompleteDocuments'])->middleware('admin.privilege:doctors,view')->name('doctors.incomplete-documents');
         Route::get('doctors/csv-report', [DoctorController::class, 'csvReport'])->middleware('admin.privilege:doctors,view')->name('doctors.csv-report');
+        Route::get('index.php/doctor_list/membership_nos', [DoctorController::class, 'membershipNumbers'])->middleware('admin.privilege:doctors,view')->name('doctors.membership-nos.legacy');
+        Route::match(['get', 'post'], 'index.php/doctor_list/doctor_search', [DoctorController::class, 'membershipNumbers'])->middleware('admin.privilege:doctors,view')->name('doctors.membership-search.legacy');
         Route::get('doctors/{doctor}', [DoctorController::class, 'show'])->middleware('admin.privilege:doctors,view')->name('doctors.show');
         Route::post('doctors/{doctor}/documents', [DoctorDocumentController::class, 'storeForDoctor'])->middleware('admin.privilege:doctors,edit')->name('doctors.documents.store');
         Route::post('doctors/{doctor}/send-mail', [DoctorController::class, 'sendMail'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-mail');
