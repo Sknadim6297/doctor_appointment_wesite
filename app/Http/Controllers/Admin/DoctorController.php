@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\DoctorDocument;
 use App\Models\ComboPlan;
 use App\Models\DoctorPost;
 use App\Models\Enrollment;
@@ -164,6 +165,13 @@ class DoctorController extends Controller
             ->take(25)
             ->get();
 
+        $documents = DoctorDocument::query()
+            ->with('creator')
+            ->where('enrollment_id', $doctor->id)
+            ->latest('id')
+            ->take(25)
+            ->get();
+
         $policyReceipts = PolicyReceipt::query()
             ->where(function ($query) use ($doctor) {
                 $query->where('enrollment_id', $doctor->id)
@@ -200,6 +208,7 @@ class DoctorController extends Controller
             'renewalStatus',
             'daysUntilRenewal',
             'posts',
+            'documents',
             'cases',
             'policyReceipts',
             'activeTab'

@@ -58,6 +58,22 @@
         Back to Doctor List
     </a>
 
+    @if(session('success'))
+        <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+            {{ session('success') }}
+        </div>
+    @endif
+
+    @if($errors->any())
+        <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <ul class="list-disc pl-5 space-y-1">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <div class="legacy-wrap">
         <div class="space-y-3">
             <div class="legacy-card">
@@ -100,10 +116,10 @@
         <div class="legacy-card" data-active-tab="{{ $activeTab ?? 'details' }}">
             <div class="legacy-tabs">
                 <button class="legacy-tab-btn" data-tab="details">Details</button>
-                <button class="legacy-tab-btn" data-tab="documents">Documents</button>
+                <button class="legacy-tab-btn" data-tab="documents">Document</button>
                 <button class="legacy-tab-btn" data-tab="cases">Cases</button>
                 <button class="legacy-tab-btn" data-tab="policies">Policies</button>
-                <button class="legacy-tab-btn" data-tab="posts">Posts</button>
+                <button class="legacy-tab-btn" data-tab="posts">Dispatched Post</button>
                 <button class="legacy-tab-btn" data-tab="premium">Premium/Policy</button>
                 <button class="legacy-tab-btn" data-tab="receipts">Money Receipt</button>
                 <button class="legacy-tab-btn" data-tab="bonds">Previous Bonds</button>
@@ -132,10 +148,75 @@
             </div>
 
             <div id="tab-documents" class="legacy-tab-panel">
-                <div class="flex flex-wrap gap-2 mb-3">
-                    <a href="{{ route('admin.posts') }}" class="qbtn qbtn-blue"><i class="ri-upload-2-line"></i> Upload document</a>
+                <h4 class="text-sm font-bold text-slate-900 mb-3">Upload document</h4>
+                <form action="{{ route('admin.doctors.documents.store', $doctor->id) }}" method="POST" enctype="multipart/form-data" class="legacy-upload-form">
+                    @csrf
+                    @php
+                        $defaultDocumentTitle = old('document_title', 'Documents dispatched for enrollment processing.');
+                    @endphp
+                    <div class="kv-grid">
+                        <div>
+                            <div class="kv-item">
+                                <div class="kv-key">Document type</div>
+                                <select class="modal-input" id="doctype" name="document_type" required>
+                                    <option value="">Select document type</option>
+                                    <option value="2">Policy</option>
+                                    <option value="4">Cheque</option>
+                                    <option value="6">Form</option>
+                                    <option value="7">Consignment form</option>
+                                    <option value="8">Other Documents</option>
+                                </select>
+                            </div>
+                            <div class="kv-item">
+                                <div class="kv-key">Document title</div>
+                                <input type="text" class="modal-input" id="doc_ttl" name="document_title" value="{{ $defaultDocumentTitle }}" required>
+                            </div>
+                            <div class="kv-item">
+                                <div class="kv-key">Document file</div>
+                                <input type="file" class="modal-input" id="doc_file" name="document_file" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button type="submit" class="qbtn qbtn-blue">Submit</button>
+                    </div>
+                </form>
+
+                <div class="mt-6">
+                    <h4 class="text-sm font-bold text-slate-900 mb-3">Documents of {{ $doctor->doctor_name ?? 'Doctor' }}</h4>
+                    <table class="mini-table">
+                        <thead>
+                            <tr>
+                                <th>SL No</th>
+                                <th>Document</th>
+                                <th>Title</th>
+                                <th>Document year</th>
+                                <th>Uploaded by</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($documents as $document)
+                                <tr>
+                                    <td>{{ $loop->iteration }}</td>
+                                    <td>{{ strtoupper(pathinfo($document->document_file, PATHINFO_EXTENSION) ?: 'FILE') }}</td>
+                                    <td>{{ $document->document_title }}</td>
+                                    <td>{{ optional($document->created_at)->format('Y') ?? 'N/A' }}</td>
+                                    <td>{{ $document->creator->name ?? 'Super Admin' }}</td>
+                                    <td>
+                                        <a href="{{ asset('storage/' . $document->document_file) }}" class="qbtn qbtn-green" target="_blank" title="View"><i class="ri-eye-line"></i></a>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6">
+                                        <div class="empty-note">No document available in table.</div>
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
                 </div>
-                <div class="empty-note">Document upload/edit panel will be wired to a dedicated doctor-document module. Existing post records are visible under the Posts tab.</div>
             </div>
 
             <div id="tab-cases" class="legacy-tab-panel">
@@ -214,29 +295,41 @@
                 <div class="mb-3">
                     <a href="{{ route('admin.posts') }}" class="qbtn qbtn-blue"><i class="ri-add-line"></i> New Post</a>
                 </div>
+                <h4 class="text-sm font-bold text-slate-900 mb-3">Dispatched post documents</h4>
+                @php
+                    $dispatchedPosts = $posts->filter(function ($post) {
+                        return !empty($post->post_doc_file) || !empty($post->post_doc_consignment_no) || !empty($post->post_doc_remark);
+                    })->values();
+                @endphp
                 <table class="mini-table">
                     <thead>
                         <tr>
                             <th>SL No</th>
-                            <th>Date of post</th>
-                            <th>Consignment no.</th>
-                            <th>Post by</th>
-                            <th>Received date</th>
+                            <th>Document</th>
+                            <th>Title</th>
+                            <th>Document year</th>
+                            <th>Uploaded by</th>
                             <th>Remark</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse($posts as $post)
+                        @forelse($dispatchedPosts as $post)
                             <tr>
                                 <td>{{ $loop->iteration }}</td>
-                                <td>{{ optional($post->post_doc_date)->format('d/m/Y') ?? 'N/A' }}</td>
-                                <td>{{ $post->post_doc_consignment_no ?? 'N/A' }}</td>
-                                <td>{{ $post->post_doc_by ?? 'N/A' }}</td>
-                                <td>{{ optional($post->post_doc_recieved_date)->format('d/m/Y') ?? 'N/A' }}</td>
+                                <td>{{ $post->post_doc_file ? strtoupper(pathinfo($post->post_doc_file, PATHINFO_EXTENSION) ?: 'FILE') : 'N/A' }}</td>
+                                <td>{{ $post->post_doc_consignment_no ?? $post->post_doc_remark ?? 'N/A' }}</td>
+                                <td>{{ optional($post->post_doc_date)->format('Y') ?? 'N/A' }}</td>
+                                <td>{{ $post->creator->name ?? 'Super Admin' }}</td>
                                 <td>{{ $post->post_doc_remark ?? 'N/A' }}</td>
+                                <td>
+                                    @if($post->post_doc_file)
+                                        <a href="{{ Storage::url($post->post_doc_file) }}" class="qbtn qbtn-green" target="_blank" title="View"><i class="ri-eye-line"></i></a>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="6">No post data available.</td></tr>
+                            <tr><td colspan="7">No dispatched post data available.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -381,6 +474,18 @@
             activateTab(this.dataset.tab);
         });
     });
+
+    const documentType = document.getElementById('doctype');
+    const consignmentFields = document.getElementById('for_consignment');
+
+    if (documentType && consignmentFields) {
+        const syncConsignmentFields = function () {
+            consignmentFields.style.display = documentType.value === '7' ? 'block' : 'none';
+        };
+
+        documentType.addEventListener('change', syncConsignmentFields);
+        syncConsignmentFields();
+    }
 
     const wrapper = document.querySelector('.legacy-card[data-active-tab]');
     activateTab(wrapper ? wrapper.dataset.activeTab : 'details');

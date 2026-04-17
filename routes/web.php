@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\AdminManagementController;
 use App\Http\Controllers\Admin\DoctorController;
+use App\Http\Controllers\Admin\DoctorDocumentController;
 use App\Http\Controllers\Admin\PolicyReceiptController;
 use App\Http\Controllers\Admin\SpecializationController;
 use App\Http\Controllers\Admin\NormalPlanController;
@@ -52,6 +53,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('doctors/incomplete-documents', [DoctorController::class, 'incompleteDocuments'])->middleware('admin.privilege:doctors,view')->name('doctors.incomplete-documents');
         Route::get('doctors/csv-report', [DoctorController::class, 'csvReport'])->middleware('admin.privilege:doctors,view')->name('doctors.csv-report');
         Route::get('doctors/{doctor}', [DoctorController::class, 'show'])->middleware('admin.privilege:doctors,view')->name('doctors.show');
+        Route::post('doctors/{doctor}/documents', [DoctorDocumentController::class, 'storeForDoctor'])->middleware('admin.privilege:doctors,edit')->name('doctors.documents.store');
         Route::post('doctors/{doctor}/send-mail', [DoctorController::class, 'sendMail'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-mail');
         Route::post('doctors/{doctor}/send-sms', [DoctorController::class, 'sendSms'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-sms');
         Route::post('doctors/{doctor}/resend-bond', [DoctorController::class, 'resendBond'])->middleware('admin.privilege:doctors,edit')->name('doctors.resend-bond');
