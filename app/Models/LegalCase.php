@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class LegalCase extends Model
 {
@@ -51,5 +52,10 @@ class LegalCase extends Model
     public function doctor()
     {
         return $this->belongsTo(Enrollment::class, 'enrollment_id');
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

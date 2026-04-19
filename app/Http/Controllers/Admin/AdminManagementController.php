@@ -9,6 +9,7 @@ use App\Models\AdminPrivilege;
 use App\Models\AdminRole;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -36,6 +37,25 @@ class AdminManagementController extends Controller
 
         $adminsQuery = User::query()
             ->with('roles:id,role_key,role_title')
+            ->withCount([
+                'loginLogs as login_logs_count',
+                'privileges as allowed_privileges_count' => function (Builder $query) {
+                    $query->where('is_allowed', true);
+                },
+            ])
+            ->addSelect([
+                'activity_logs_count' => AdminActivityLog::query()
+                    ->selectRaw('count(distinct id)')
+                    ->where(function (Builder $query) {
+                        $query->whereColumn('actor_user_id', 'users.id')
+                            ->orWhereColumn('owner_user_id', 'users.id');
+                    })
+                    ->where(function (Builder $query) {
+                        $query->where('module_key', '!=', 'auth')
+                            ->orWhereNull('module_key')
+                            ->orWhereNotIn('action', ['login', 'logout']);
+                    }),
+            ])
             ->where(function (Builder $query) use ($roleKeys) {
             $query->whereIn('role', $roleKeys)
                 ->orWhere('role', 'super_admin')
@@ -207,6 +227,10 @@ class AdminManagementController extends Controller
 
     public function edit(User $admin)
     {
+        if ($response = $this->rejectProtectedAdminMutation($admin)) {
+            return $response;
+        }
+
         $roleOptions = AdminRole::query()
             ->orderBy('role_title')
             ->get(['role_title', 'role_key']);
@@ -225,6 +249,10 @@ class AdminManagementController extends Controller
 
     public function update(Request $request, User $admin)
     {
+        if ($response = $this->rejectProtectedAdminMutation($admin)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'first_name' => 'required|string|max:100',
             'last_name' => 'nullable|string|max:100',
@@ -275,6 +303,10 @@ class AdminManagementController extends Controller
 
     public function resetPassword(Request $request, User $admin)
     {
+        if ($response = $this->rejectProtectedAdminMutation($admin)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'password' => 'required|min:8|confirmed',
         ]);
@@ -288,6 +320,10 @@ class AdminManagementController extends Controller
 
     public function destroy(User $admin)
     {
+        if ($response = $this->rejectProtectedAdminMutation($admin)) {
+            return $response;
+        }
+
         // Prevent deleting yourself
         if ((int) $admin->getKey() === (int) Auth::id()) {
             return back()->with('error', 'You cannot delete your own account!');
@@ -370,10 +406,27 @@ class AdminManagementController extends Controller
                 $query->where('actor_user_id', $admin->id)
                     ->orWhere('owner_user_id', $admin->id);
             })
+            ->where(function (Builder $query) {
+                $query->where('module_key', '!=', 'auth')
+                    ->orWhereNull('module_key')
+                    ->orWhereNotIn('action', ['login', 'logout']);
+            })
+            ->distinct()
             ->orderByDesc('occurred_at')
             ->paginate(20);
 
         return view('admin.admin-management.activity-log', compact('admin', 'logs'));
+    }
+
+    private function rejectProtectedAdminMutation(User $admin): ?RedirectResponse
+    {
+        if ($admin->hasAdminRole('super_admin')) {
+            return redirect()
+                ->route('admin.admin-management.index')
+                ->with('error', 'Super admin account cannot be edited, reset, or deleted from this panel.');
+        }
+
+        return null;
     }
 }
 

@@ -20,7 +20,7 @@ class CaseController extends Controller
         $stage = $request->input('stage');
 
         $cases = LegalCase::query()
-            ->with(['doctor'])
+            ->with(['doctor:id,specialization_id,plan', 'creator:id,name,email'])
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($innerQuery) use ($search) {
                     $innerQuery->where('doctor_name', 'like', '%' . $search . '%')
@@ -30,8 +30,17 @@ class CaseController extends Controller
                         ->orWhere('complainant_name', 'like', '%' . $search . '%');
                 });
             })
+            ->when($specializationId !== null && $specializationId !== '', function ($query) use ($specializationId) {
+                $query->whereHas('doctor', function ($doctorQuery) use ($specializationId) {
+                    $doctorQuery->where('specialization_id', $specializationId);
+                });
+            })
+            ->when($plan !== null && $plan !== '', function ($query) use ($plan) {
+                $query->whereHas('doctor', function ($doctorQuery) use ($plan) {
+                    $doctorQuery->where('plan', $plan);
+                });
+            })
             ->when($stage !== null && $stage !== '', fn ($query) => $query->where('stage', 'like', '%' . $stage . '%'))
-            ->orderByDesc('created_at')
             ->orderByDesc('created_at')
             ->paginate(25)
             ->appends($request->query());

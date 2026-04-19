@@ -12,6 +12,9 @@
 <style>
     .case-shell { border: 1px solid #dbe3ee; border-radius: 14px; background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%); }
     .case-toolbar { border: 1px solid #dbeafe; background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%); }
+    .case-filter-label { display: block; margin-bottom: 0.35rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #475569; }
+    .case-filter-input, .case-filter-select { width: 100%; border-radius: 0.7rem; border: 1px solid #cbd5e1; background: #fff; font-size: 0.84rem; color: #0f172a; padding: 0.62rem 0.75rem; }
+    .case-filter-input:focus, .case-filter-select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16); }
     .case-table { border-collapse: separate; border-spacing: 0; border: 1px solid #dbe3ee; border-radius: 0.85rem; overflow: hidden; }
     .case-table thead th { background: #0f172a; color: #e2e8f0; font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.75rem; border-bottom: 1px solid #1e293b; white-space: nowrap; }
     .case-table tbody td { vertical-align: middle; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 0.82rem; padding: 0.75rem; }
@@ -41,13 +44,18 @@
     .case-help { margin-top: 0.35rem; font-size: 0.78rem; color: #64748b; }
     .case-inline { display: flex; align-items: center; gap: 0.5rem; }
     .case-inline input[type="checkbox"] { width: 1rem; height: 1rem; }
+    .case-view-grid { display: grid; gap: 0.85rem; grid-template-columns: repeat(1, minmax(0, 1fr)); }
+    @media (min-width: 768px) { .case-view-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .case-view-item { border: 1px solid #e2e8f0; border-radius: 0.7rem; padding: 0.65rem 0.8rem; background: #f8fafc; }
+    .case-view-label { margin-bottom: 0.2rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
+    .case-view-value { font-size: 0.9rem; color: #0f172a; word-break: break-word; }
 </style>
 
 <section class="case-shell section-card space-y-5 p-5" x-data="casePage()">
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
             <h3 class="section-title mb-1">Case List ({{ $caseRows->total() }})</h3>
-            <p class="text-sm text-slate-600">Legacy case management screen with create and edit modals.</p>
+            <p class="text-sm text-slate-600">Legacy case management screen with create, view, and edit workflows.</p>
         </div>
         <div class="flex flex-wrap gap-2">
             <button type="button" class="btn-brand !px-4 !py-2 text-sm" @click="openCreateModal()">
@@ -64,10 +72,12 @@
     <div class="case-toolbar rounded-xl p-4">
         <form method="GET" action="{{ route('admin.cases') }}" class="grid grid-cols-1 gap-3 md:grid-cols-12">
             <div class="md:col-span-4">
-                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Search doctor, phone, case no., complainant" class="w-full rounded-lg border-slate-300 text-sm">
+                <label for="case-search" class="case-filter-label">Search</label>
+                <input id="case-search" type="text" name="search" value="{{ $search ?? '' }}" placeholder="Doctor, phone, case no., complainant" class="case-filter-input">
             </div>
             <div class="md:col-span-2">
-                <select name="specialization_id" class="w-full rounded-lg border-slate-300 text-sm">
+                <label for="case-specialization" class="case-filter-label">Specialization</label>
+                <select id="case-specialization" name="specialization_id" class="case-filter-select">
                     <option value="">All Specializations</option>
                     @foreach($specializations as $specialization)
                         <option value="{{ $specialization->id }}" {{ (string) request('specialization_id') === (string) $specialization->id ? 'selected' : '' }}>{{ $specialization->name }}</option>
@@ -75,7 +85,8 @@
                 </select>
             </div>
             <div class="md:col-span-2">
-                <select name="plan" class="w-full rounded-lg border-slate-300 text-sm">
+                <label for="case-plan" class="case-filter-label">Plan</label>
+                <select id="case-plan" name="plan" class="case-filter-select">
                     <option value="">All Category</option>
                     @foreach($plans as $id => $name)
                         <option value="{{ $id }}" {{ (string) request('plan') === (string) $id ? 'selected' : '' }}>{{ $name }}</option>
@@ -83,15 +94,16 @@
                 </select>
             </div>
             <div class="md:col-span-2">
-                <select name="stage" class="w-full rounded-lg border-slate-300 text-sm">
+                <label for="case-stage" class="case-filter-label">Stage</label>
+                <select id="case-stage" name="stage" class="case-filter-select">
                     <option value="">All Stages</option>
                     <option value="open" {{ ($stage ?? '') === 'open' ? 'selected' : '' }}>Open</option>
                     <option value="progress" {{ ($stage ?? '') === 'progress' ? 'selected' : '' }}>In Progress</option>
                     <option value="closed" {{ ($stage ?? '') === 'closed' ? 'selected' : '' }}>Closed</option>
                 </select>
             </div>
-            <div class="md:col-span-2 flex gap-2">
-                <button type="submit" class="btn-brand !px-4 !py-2 text-sm">Search</button>
+            <div class="md:col-span-2 flex items-end gap-2">
+                <button type="submit" class="btn-brand !px-4 !py-2 text-sm">Apply</button>
                 <a href="{{ route('admin.cases') }}" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Reset</a>
             </div>
         </form>
@@ -146,10 +158,13 @@
                         </td>
                         <td>{{ optional($caseRecord->next_date)->format('d/m/Y') ?? 'N/A' }}</td>
                         <td>{{ optional($caseRecord->created_at)->format('d/m/Y') ?? 'N/A' }}</td>
-                        <td>{{ $caseRecord->created_by ?? 'System' }}</td>
+                        <td>
+                            <div class="font-semibold text-slate-800">{{ $caseRecord->creator?->name ?? 'System' }}</div>
+                            <div class="text-xs text-slate-500">{{ $caseRecord->creator?->email ?? 'Auto created' }}</div>
+                        </td>
                         <td>
                             <div class="flex flex-wrap gap-1">
-                                <button type="button" class="case-action-btn case-action-view" title="View / Edit" @click="openEditModalById({{ $caseRecord->id }})"><i class="ri-eye-line"></i></button>
+                                <button type="button" class="case-action-btn case-action-view" title="View details" @click="openViewModalById({{ $caseRecord->id }})"><i class="ri-eye-line"></i></button>
                                 <button type="button" class="case-action-btn case-action-edit" title="Edit" @click="openEditModalById({{ $caseRecord->id }})"><i class="ri-pencil-line"></i></button>
                                 <form method="POST" action="{{ route('admin.cases.destroy', $caseRecord->id) }}" onsubmit="return confirm('Delete this case?');">
                                     @csrf
@@ -355,6 +370,39 @@
             </form>
         </div>
     </div>
+
+    <div class="case-modal-backdrop" x-show="viewModalOpen" x-transition.opacity x-cloak style="display: none;">
+        <div class="case-modal" @click.away="closeModals()">
+            <div class="case-modal-head">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900">Case Details</h3>
+                    <p class="text-sm text-slate-600">Read-only snapshot for quick review.</p>
+                </div>
+                <button type="button" class="rounded-full border border-slate-300 px-2 py-1 text-slate-500 hover:bg-slate-100" @click="closeModals()">&times;</button>
+            </div>
+
+            <div class="case-modal-body" x-show="viewCase">
+                <div class="case-view-grid">
+                    <div class="case-view-item"><p class="case-view-label">Doctor Name</p><p class="case-view-value" x-text="viewCase?.doctor_name || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Case Number</p><p class="case-view-value" x-text="viewCase?.case_number || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Doctor Phone</p><p class="case-view-value" x-text="viewCase?.doctor_phone || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Doctor Email</p><p class="case-view-value" x-text="viewCase?.doctor_mail || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Category</p><p class="case-view-value" x-text="viewCase?.case_cat || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Stage</p><p class="case-view-value" x-text="viewCase?.stage || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Court</p><p class="case-view-value" x-text="viewCase?.court || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Court Year</p><p class="case-view-value" x-text="viewCase?.court_year || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Complainant</p><p class="case-view-value" x-text="viewCase?.complainant_name || 'N/A'"></p></div>
+                    <div class="case-view-item"><p class="case-view-label">Next Date</p><p class="case-view-value" x-text="viewCase?.next_date || 'N/A'"></p></div>
+                    <div class="case-view-item md:col-span-2"><p class="case-view-label">Case Details</p><p class="case-view-value" x-text="viewCase?.case_details || 'N/A'"></p></div>
+                    <div class="case-view-item md:col-span-2"><p class="case-view-label">Court Address</p><p class="case-view-value" x-text="viewCase?.court_address || 'N/A'"></p></div>
+                </div>
+            </div>
+
+            <div class="case-modal-foot">
+                <button type="button" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100" @click="closeModals()">Close</button>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -363,8 +411,10 @@ function casePage() {
     return {
         createModalOpen: false,
         editModalOpen: false,
+        viewModalOpen: false,
+        viewCase: null,
         modalTitle: 'Submit new case',
-        submitLabel: 'Update',
+        submitLabel: 'Submit',
         formAction: '{{ route('admin.cases.store') }}',
         formMethod: 'POST',
         selectedDoctorText: '',
@@ -372,6 +422,8 @@ function casePage() {
             this.resetForm();
             this.createModalOpen = true;
             this.editModalOpen = false;
+            this.viewModalOpen = false;
+            this.viewCase = null;
             this.modalTitle = 'Submit new case';
             this.submitLabel = 'Submit';
             this.formAction = '{{ route('admin.cases.store') }}';
@@ -381,6 +433,8 @@ function casePage() {
             this.resetForm();
             this.editModalOpen = true;
             this.createModalOpen = false;
+            this.viewModalOpen = false;
+            this.viewCase = null;
             this.modalTitle = 'Edit case';
             this.submitLabel = 'Update';
             this.formAction = '{{ url('admin/cases') }}/' + caseRecord.id;
@@ -415,6 +469,28 @@ function casePage() {
             directPayment.checked = Boolean(caseRecord.direct_payment);
             this.toggleDirectPayment({ target: directPayment });
         },
+        openViewModal(caseRecord) {
+            this.closeModals();
+            this.viewCase = caseRecord || null;
+            this.viewModalOpen = true;
+        },
+        async openViewModalById(caseId) {
+            try {
+                const response = await fetch(`{{ url('admin/cases') }}/${caseId}/json`, {
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload.success || !payload.case) {
+                    alert('Unable to load case details. Please try again.');
+                    return;
+                }
+                this.openViewModal(payload.case);
+            } catch (error) {
+                alert('Unable to load case details. Please check your connection and retry.');
+            }
+        },
         async openEditModalById(caseId) {
             try {
                 const response = await fetch(`{{ url('admin/cases') }}/${caseId}/json`, {
@@ -435,6 +511,8 @@ function casePage() {
         closeModals() {
             this.createModalOpen = false;
             this.editModalOpen = false;
+            this.viewModalOpen = false;
+            this.viewCase = null;
         },
         resetForm() {
             const fields = [

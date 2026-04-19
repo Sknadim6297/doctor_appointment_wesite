@@ -53,8 +53,7 @@
                     <th>Contact</th>
                     <th>Status</th>
                     <th>User Privileges</th>
-                    <th>Login log</th>
-                    <th>Activity Log</th>
+                    <th>Logs</th>
                     <th>Created On</th>
                     <th>Action</th>
                 </tr>
@@ -96,44 +95,49 @@
                     <td>
                         <a href="{{ route('admin.admin-management.privileges', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-blue-100 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-200" title="User privileges">
                             <i class="ri-shield-user-line"></i>
-                            <span>Manage</span>
+                            <span>Manage ({{ (int) ($admin->allowed_privileges_count ?? 0) }})</span>
                         </a>
                     </td>
                     <td>
-                        <a href="{{ route('admin.admin-management.login-log', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-200" title="Login log">
-                            <i class="ri-history-line"></i>
-                            <span>View</span>
-                        </a>
-                    </td>
-                    <td>
-                        <a href="{{ route('admin.admin-management.activity-log', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-violet-100 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-200" title="Activity log">
-                            <i class="ri-file-list-3-line"></i>
-                            <span>View</span>
-                        </a>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <a href="{{ route('admin.admin-management.login-log', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-200" title="Login log">
+                                <i class="ri-history-line"></i>
+                                <span>Login ({{ (int) ($admin->login_logs_count ?? 0) }})</span>
+                            </a>
+                            <a href="{{ route('admin.admin-management.activity-log', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-violet-100 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-200" title="Activity log">
+                                <i class="ri-file-list-3-line"></i>
+                                <span>Activity ({{ (int) ($admin->activity_logs_count ?? 0) }})</span>
+                            </a>
+                        </div>
                     </td>
                     <td>{{ $admin->created_at->format('d/m/Y') }}</td>
                     <td>
+                        @php($isProtectedAdmin = $admin->hasAdminRole('super_admin'))
                         <div class="flex items-center gap-2">
-                            <a href="{{ route('admin.admin-management.edit', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200" title="Edit sub admin">
-                                <i class="ri-pencil-line"></i>
-                                <span>Edit</span>
-                            </a>
-                            @if($admin->id !== auth()->id())
-                            <form method="POST" action="{{ route('admin.admin-management.destroy', $admin) }}" onsubmit="return confirm('Are you sure you want to delete this admin?');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="inline-flex items-center gap-1 rounded-lg bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-200" title="Delete">
-                                    <i class="ri-delete-bin-line"></i>
-                                    <span>Delete</span>
-                                </button>
-                            </form>
+                            @if($isProtectedAdmin)
+                                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">Protected</span>
+                            @else
+                                <a href="{{ route('admin.admin-management.edit', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200" title="Edit sub admin">
+                                    <i class="ri-pencil-line"></i>
+                                    <span>Edit</span>
+                                </a>
+                                @if($admin->id !== auth()->id())
+                                <form method="POST" action="{{ route('admin.admin-management.destroy', $admin) }}" onsubmit="return confirm('Are you sure you want to delete this admin?');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="inline-flex items-center gap-1 rounded-lg bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-200" title="Delete">
+                                        <i class="ri-delete-bin-line"></i>
+                                        <span>Delete</span>
+                                    </button>
+                                </form>
+                                @endif
                             @endif
                         </div>
                     </td>
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="12" class="py-8 text-center text-slate-500">No sub admins found.</td>
+                    <td colspan="11" class="py-8 text-center text-slate-500">No sub admins found.</td>
                 </tr>
                 @endforelse
             </tbody>
