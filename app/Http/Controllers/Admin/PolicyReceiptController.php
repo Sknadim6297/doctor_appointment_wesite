@@ -21,7 +21,7 @@ class PolicyReceiptController extends Controller
                   ->orWhere('doctor_name', 'like', "%{$search}%");
             })
             ->orderByDesc('id')
-            ->paginate(15)
+            ->paginate(10)
             ->withQueryString();
 
         $doctors = Enrollment::query()
@@ -51,7 +51,7 @@ class PolicyReceiptController extends Controller
                 });
             })
             ->orderByDesc('id')
-            ->paginate(15)
+            ->paginate(10)
             ->withQueryString();
 
         $years = range((int) date('Y') + 10, 2006);

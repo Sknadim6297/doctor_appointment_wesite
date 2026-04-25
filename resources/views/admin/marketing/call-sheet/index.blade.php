@@ -12,6 +12,11 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2 no-print">
+            <button type="button" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-300" @click="openCreate()" title="Add New Call Sheet">
+                <i class="ri-add-line"></i>
+                <span>New Call Sheet</span>
+            </button>
+
             <button type="button" class="btn btn-default" onclick="printCallSheet()" title="Print All">
                 <i class="ri-printer-line"></i>
                 <span>Print</span>
@@ -132,6 +137,7 @@
             <form :action="formAction" method="POST" class="overflow-hidden">
                 @csrf
                 <input type="hidden" name="_method" x-bind:value="formMethod">
+                <input type="hidden" name="form_mode" x-bind:value="formMode">
                 <input type="hidden" name="call_sheet_id" id="call_sheet_id" value="">
 
                 <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -185,10 +191,33 @@
             modalOpen: false,
             modalTitle: 'Edit call sheet',
             submitLabel: 'Update',
-            formAction: '',
+            formAction: @json(route('admin.call-sheet.store')),
             formMethod: 'PUT',
+            formMode: 'edit',
             closeModal() {
                 this.modalOpen = false;
+            },
+            openCreate() {
+                this.modalTitle = 'New call sheet';
+                this.submitLabel = 'Save';
+                this.formAction = @json(route('admin.call-sheet.store'));
+                this.formMethod = 'POST';
+                this.formMode = 'create';
+                this.modalOpen = true;
+
+                document.getElementById('call_sheet_id').value = '';
+                document.getElementById('doctor_name').value = '';
+                document.getElementById('doctor_email').value = '';
+                document.getElementById('mobile1').value = '';
+
+                if (typeof $ !== 'undefined' && $.fn.select2) {
+                    $('#specialization_ids').val([]).trigger('change');
+                } else {
+                    const select = document.getElementById('specialization_ids');
+                    Array.from(select.options).forEach(function(option) {
+                        option.selected = false;
+                    });
+                }
             },
             async openEdit(callSheetId) {
                 try {
@@ -205,6 +234,7 @@
                     this.submitLabel = 'Update';
                     this.formAction = @json(url('/admin/call-sheet')).replace('/admin/call-sheet', '/admin/call-sheet/' + callSheetId);
                     this.formMethod = 'PUT';
+                    this.formMode = 'edit';
                     this.modalOpen = true;
 
                     document.getElementById('call_sheet_id').value = callSheet.id || '';
@@ -253,6 +283,33 @@
                 width: '100%',
                 placeholder: '---Select specialization---',
                 allowClear: true,
+            });
+        }
+
+        const shouldOpenCreateModal = @json($errors->any() && old('form_mode') === 'create');
+        if (!shouldOpenCreateModal) {
+            return;
+        }
+
+        const alpineRoot = document.querySelector('[x-data="callSheetPage()"]');
+        if (!alpineRoot || !alpineRoot.__x) {
+            return;
+        }
+
+        const component = alpineRoot.__x.$data;
+        component.openCreate();
+
+        document.getElementById('doctor_name').value = @json(old('doctor_name', ''));
+        document.getElementById('doctor_email').value = @json(old('doctor_email', ''));
+        document.getElementById('mobile1').value = @json(old('mobile1', ''));
+
+        const oldSpecializationIds = @json(array_map('strval', old('specialization_ids', [])));
+        if (typeof $ !== 'undefined' && $.fn.select2) {
+            $('#specialization_ids').val(oldSpecializationIds).trigger('change');
+        } else {
+            const select = document.getElementById('specialization_ids');
+            Array.from(select.options).forEach(function(option) {
+                option.selected = oldSpecializationIds.includes(option.value);
             });
         }
     });

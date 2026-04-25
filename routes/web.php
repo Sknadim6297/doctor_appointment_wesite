@@ -102,8 +102,34 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('index.php/money_reciept/edit_money_reciept/{receipt}', [DoctorController::class, 'receiptsEdit'])->middleware('admin.privilege:receipts,edit')->name('receipts.legacy-edit');
         Route::post('index.php/money_reciept/edit_money_reciept_submit', [DoctorController::class, 'receiptsLegacyUpdate'])->middleware('admin.privilege:receipts,edit')->name('receipts.legacy-update');
 
+        // Enrollment cheque deposit (legacy) - modernized view + CSV
+        Route::get('receipts/enrollment-cheque-deposit', [DoctorController::class, 'enrollmentChequeDeposit'])->middleware('admin.privilege:receipts,view')->name('receipts.enrollment-cheque-deposit');
+        Route::get('receipts/enrollment-cheque-deposit/csv', [DoctorController::class, 'enrollmentChequeDepositCsv'])->middleware('admin.privilege:receipts,view')->name('receipts.enrollment-cheque-deposit.csv');
+        Route::get('index.php/money_reciept/enrollment_cheque_deposit', [DoctorController::class, 'enrollmentChequeDeposit'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-enrollment-cheque-deposit');
+        Route::match(['get', 'post'], 'index.php/money_reciept/enrollment_cheque_deposit_search', [DoctorController::class, 'enrollmentChequeDeposit'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-enrollment-cheque-deposit-search');
+        Route::get('index.php/money_reciept/enrollment_cheque_deposit_csv_report', [DoctorController::class, 'enrollmentChequeDepositCsv'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-enrollment-cheque-deposit-csv');
+
+        // Renewal cheque deposit (legacy) - modernized view + CSV
+        Route::get('receipts/renewal-cheque-deposit', [DoctorController::class, 'renewalChequeDeposit'])->middleware('admin.privilege:receipts,view')->name('receipts.renewal-cheque-deposit');
+        Route::get('receipts/renewal-cheque-deposit/csv', [DoctorController::class, 'renewalChequeDepositCsv'])->middleware('admin.privilege:receipts,view')->name('receipts.renewal-cheque-deposit.csv');
+        Route::post('receipts/renewal-cheque-deposit', [DoctorController::class, 'renewalChequeDepositStore'])->middleware('admin.privilege:receipts,edit')->name('receipts.renewal-cheque-deposit.store');
+        Route::put('receipts/renewal-cheque-deposit/{receipt}', [DoctorController::class, 'renewalChequeDepositUpdate'])->middleware('admin.privilege:receipts,edit')->name('receipts.renewal-cheque-deposit.update');
+        Route::delete('receipts/renewal-cheque-deposit/{receipt}', [DoctorController::class, 'renewalChequeDepositDestroy'])->middleware('admin.privilege:receipts,delete')->name('receipts.renewal-cheque-deposit.destroy');
+        Route::get('receipts/renewal-cheque-deposit/{receipt}/json', [DoctorController::class, 'renewalChequeDepositShowJson'])->middleware('admin.privilege:receipts,view')->name('receipts.renewal-cheque-deposit.json');
+        Route::get('receipts/renewal-cheque-deposit/get-membership-no', [DoctorController::class, 'getMembershipNo'])->middleware('admin.privilege:receipts,view')->name('receipts.renewal-cheque-deposit.membership-no');
+        Route::get('index.php/money_reciept/renewal_cheque_deposit', [DoctorController::class, 'renewalChequeDeposit'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-renewal-cheque-deposit');
+        Route::match(['get', 'post'], 'index.php/money_reciept/renewal_cheque_deposit_search', [DoctorController::class, 'renewalChequeDeposit'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-renewal-cheque-deposit-search');
+        Route::get('index.php/money_reciept/renewal_cheque_deposit_csv_report', [DoctorController::class, 'renewalChequeDepositCsv'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-renewal-cheque-deposit-csv');
+        Route::post('index.php/money_reciept/cheque_deposite_submit', [DoctorController::class, 'renewalChequeDepositStore'])->middleware('admin.privilege:receipts,edit')->name('receipts.legacy-renewal-cheque-deposit-store');
+        Route::post('index.php/money_reciept/cheque_deposite_update/{receipt}', [DoctorController::class, 'renewalChequeDepositUpdate'])->middleware('admin.privilege:receipts,edit')->name('receipts.legacy-renewal-cheque-deposit-update');
+        Route::post('index.php/money_reciept/delete_cheque_deposite/{receipt}', [DoctorController::class, 'renewalChequeDepositDestroy'])->middleware('admin.privilege:receipts,delete')->name('receipts.legacy-renewal-cheque-deposit-destroy');
+        Route::get('index.php/money_reciept/get_membership_no', [DoctorController::class, 'getMembershipNo'])->middleware('admin.privilege:receipts,view')->name('receipts.legacy-renewal-cheque-deposit-membership-no');
+
         // Account Management
         Route::get('premium-amount', [DoctorController::class, 'premiumAmountIndex'])->middleware('admin.privilege:receipts,view')->name('premium-amount.index');
+        Route::get('premium-amount/csv-report', [DoctorController::class, 'premiumAmountCsvReport'])->middleware('admin.privilege:receipts,view')->name('premium-amount.csv');
+        Route::get('index.php/premium_amount', [DoctorController::class, 'premiumAmountIndex'])->middleware('admin.privilege:receipts,view')->name('premium-amount.legacy-index');
+        Route::get('index.php/premium_amount/premium_amount_csv_report', [DoctorController::class, 'premiumAmountCsvReport'])->middleware('admin.privilege:receipts,view')->name('premium-amount.legacy-csv');
         Route::get('index.php/doctor_list/edit_doctor/{doctor}', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-edit');
         Route::get('index.php/renewal_list/renewal/{doctor}/{renewType?}', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-renewal');
         
@@ -163,6 +189,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Marketing Call Sheet
         Route::get('call-sheet', [CallSheetController::class, 'index'])->middleware('admin.privilege:doctors,view')->name('call-sheet.index');
+        Route::post('call-sheet', [CallSheetController::class, 'store'])->middleware('admin.privilege:doctors,edit')->name('call-sheet.store');
         Route::get('call-sheet/{callSheet}/edit', [CallSheetController::class, 'edit'])->middleware('admin.privilege:doctors,edit')->name('call-sheet.edit');
         Route::put('call-sheet/{callSheet}', [CallSheetController::class, 'update'])->middleware('admin.privilege:doctors,edit')->name('call-sheet.update');
         Route::delete('call-sheet/{callSheet}', [CallSheetController::class, 'destroy'])->middleware('admin.privilege:doctors,delete')->name('call-sheet.destroy');

@@ -15,12 +15,8 @@ class DoctorPostController extends Controller
     public function index(Request $request)
     {
         $search = trim((string) $request->query('search'));
-        $perPage = (int) $request->query('per_page', 10);
-        $allowedPerPage = [10, 25, 50, 100];
-
-        if (!in_array($perPage, $allowedPerPage, true)) {
-            $perPage = 10;
-        }
+        $perPage = 10;
+        $allowedPerPage = [10];
 
         $posts = DoctorPost::with(['enrollment', 'creator'])
             ->when($search, function ($q) use ($search) {
@@ -85,6 +81,7 @@ class DoctorPostController extends Controller
             'post_doc_recieved_date' => 'nullable|date_format:d/m/Y',
             'post_doc_recieved_by' => 'nullable|string|max:255',
             'post_doc_remark' => 'required|string|max:255',
+            'tracking_link' => 'nullable|url|max:500',
             'post_doc_file' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240',
         ]);
 
@@ -111,6 +108,7 @@ class DoctorPostController extends Controller
             'post_doc_recieved_date' => $isConsignment ? Carbon::createFromFormat('d/m/Y', $data['post_doc_recieved_date'])->format('Y-m-d') : null,
             'post_doc_recieved_by' => $data['post_doc_recieved_by'] ?? null,
             'post_doc_remark' => $data['post_doc_remark'],
+            'tracking_link' => $data['tracking_link'] ?? null,
             'post_doc_file' => $filePath,
             'created_by' => Auth::id(),
         ]);

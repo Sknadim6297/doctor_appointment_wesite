@@ -193,21 +193,22 @@
         style="display: none;"
         @keydown.escape.window="modalOpen = false"
     >
-        <div class="w-full max-w-2xl rounded-xl bg-white shadow-2xl" @click.away="closeModal()">
-            <form id="postForm" :action="formAction" method="POST" enctype="multipart/form-data">
+        <div class="w-full max-w-xl rounded-2xl bg-white shadow-2xl" @click.away="closeModal()">
+            <form id="post_upload_form" :action="formAction" method="POST" enctype="multipart/form-data" accept-charset="utf-8">
                 @csrf
                 <input type="hidden" name="_method" id="post_form_method" value="POST" disabled>
                 <input type="hidden" name="post_id" id="post_id" value="">
+                <input type="hidden" name="doctype" id="doctype" value="7">
 
                 <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-                    <h3 class="text-lg font-semibold" x-text="modalTitle">New post</h3>
+                    <h3 class="text-lg font-semibold" x-text="modalTitle">Add New Post</h3>
                     <button type="button" class="text-2xl leading-none text-slate-500 hover:text-slate-700" @click="closeModal()">&times;</button>
                 </div>
 
                 <div class="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-4">
                     <div>
                         <label for="doctor" class="mb-1 block text-sm font-semibold">Doctor <span class="text-red-600">*</span></label>
-                        <select id="doctor" name="doctor" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" required>
+                        <select id="doctor" name="doctor" class="select2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" required>
                             <option value="">--Select doctor--</option>
                             @foreach($doctors as $doctor)
                                 <option value="{{ $doctor->id }}" {{ old('doctor') == $doctor->id ? 'selected' : '' }}>{{ $doctor->doctor_name }}{{ $doctor->money_rc_no ? ' (' . $doctor->money_rc_no . ')' : '' }}</option>
@@ -215,15 +216,9 @@
                         </select>
                     </div>
 
-                    <div class="grid gap-4 sm:grid-cols-2">
-                        <div>
-                            <label for="post_doc_date" class="mb-1 block text-sm font-semibold">Post date <span class="text-red-600">*</span></label>
-                            <input type="text" id="post_doc_date" class="datepicker w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="post_doc_date" value="{{ old('post_doc_date') }}" autocomplete="off" required>
-                        </div>
-                        <div>
-                            <label for="post_doc_recieved_date" class="mb-1 block text-sm font-semibold">Recieved date <span class="text-red-600">*</span></label>
-                            <input type="text" id="post_doc_recieved_date" class="datepicker w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="post_doc_recieved_date" value="{{ old('post_doc_recieved_date') }}" autocomplete="off" required>
-                        </div>
+                    <div>
+                        <label for="post_doc_date" class="mb-1 block text-sm font-semibold">Post date <span class="text-red-600">*</span></label>
+                        <input type="text" id="post_doc_date" class="datepicker w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="post_doc_date" value="{{ old('post_doc_date') }}" autocomplete="off" required>
                     </div>
 
                     <div>
@@ -234,6 +229,11 @@
                     <div>
                         <label for="post_doc_by" class="mb-1 block text-sm font-semibold">Post by <span class="text-red-600">*</span></label>
                         <input type="text" id="post_doc_by" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="post_doc_by" value="{{ old('post_doc_by') }}" required>
+                    </div>
+
+                    <div>
+                        <label for="post_doc_recieved_date" class="mb-1 block text-sm font-semibold">Recieved date <span class="text-red-600">*</span></label>
+                        <input type="text" id="post_doc_recieved_date" class="datepicker w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="post_doc_recieved_date" value="{{ old('post_doc_recieved_date') }}" autocomplete="off" required>
                     </div>
 
                     <div>
@@ -248,6 +248,7 @@
 
                     <div>
                         <label for="tracking_link" class="mb-1 block text-sm font-semibold">Tracking link</label>
+                        <p class="mb-1 text-xs text-slate-500">Insert valid link (Example: http://www.example.com, https://www.example.com)</p>
                         <input type="url" id="tracking_link" name="tracking_link" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value="{{ old('tracking_link') }}" placeholder="https://example.com/track/123">
                     </div>
 
@@ -259,7 +260,7 @@
 
                 <div class="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
                     <button type="button" class="btn btn-default" @click="closeModal()">Close</button>
-                    <button type="submit" class="btn btn-primary" x-text="submitLabel">Submit</button>
+                    <button type="submit" class="btn btn-primary" onclick="return post_docupload_validation()" x-text="submitLabel">Submit</button>
                 </div>
             </form>
         </div>
@@ -268,6 +269,8 @@
 @endsection
 
 @push('scripts')
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
@@ -276,12 +279,12 @@
                 modalOpen: false,
                 modalMode: 'create',
                 formAction: @json(route('admin.posts.store')),
-                modalTitle: 'New post',
+                modalTitle: 'Add New Post',
                 submitLabel: 'Submit',
                 openCreate() {
                     this.modalMode = 'create';
                     this.formAction = @json(route('admin.posts.store'));
-                    this.modalTitle = 'New post';
+                    this.modalTitle = 'Add New Post';
                     this.submitLabel = 'Submit';
                     this.modalOpen = true;
                     this.resetForm();
@@ -290,7 +293,7 @@
                     this.modalOpen = false;
                 },
                 resetForm() {
-                    const form = document.getElementById('postForm');
+                    const form = document.getElementById('post_upload_form');
                     if (!form) return;
 
                     form.reset();
@@ -300,6 +303,10 @@
                     if (methodField) {
                         methodField.value = 'POST';
                         methodField.disabled = true;
+                    }
+
+                    if (typeof $ !== 'undefined' && $.fn.select2) {
+                        $('#doctor').val('').trigger('change');
                     }
                 },
                 async openEdit(postId) {
@@ -321,7 +328,7 @@
 
                         const postIdField = document.getElementById('post_id');
                         const methodField = document.getElementById('post_form_method');
-                        const form = document.getElementById('postForm');
+                        const form = document.getElementById('post_upload_form');
 
                         if (postIdField) postIdField.value = postId;
                         if (methodField) {
@@ -330,7 +337,11 @@
                         }
                         if (form) {
                             form.action = this.formAction;
-                            document.getElementById('doctor').value = post.enrollment_id || '';
+                            if (typeof $ !== 'undefined' && $.fn.select2) {
+                                $('#doctor').val(String(post.enrollment_id || '')).trigger('change');
+                            } else {
+                                document.getElementById('doctor').value = post.enrollment_id || '';
+                            }
                             document.getElementById('post_doc_date').value = post.post_doc_date || '';
                             document.getElementById('post_doc_consignment_no').value = post.post_doc_consignment_no || '';
                             document.getElementById('post_doc_by').value = post.post_doc_by || '';
@@ -353,6 +364,53 @@
                 }
             };
         }
+
+        function post_docupload_validation() {
+            const requiredFields = [
+                { id: 'doctor', label: 'Doctor' },
+                { id: 'post_doc_date', label: 'Post date' },
+                { id: 'post_doc_consignment_no', label: 'Consignment number' },
+                { id: 'post_doc_by', label: 'Post by' },
+                { id: 'post_doc_recieved_date', label: 'Recieved date' },
+                { id: 'post_doc_remark', label: 'Remark' },
+            ];
+
+            for (const field of requiredFields) {
+                const input = document.getElementById(field.id);
+                if (!input) {
+                    continue;
+                }
+
+                if (!String(input.value || '').trim()) {
+                    alert(field.label + ' is required.');
+                    input.focus();
+                    return false;
+                }
+            }
+
+            const trackingLinkInput = document.getElementById('tracking_link');
+            const linkValue = String(trackingLinkInput?.value || '').trim();
+            if (linkValue !== '') {
+                const validUrlPattern = /^https?:\/\/.+/i;
+                if (!validUrlPattern.test(linkValue)) {
+                    alert('Please enter a valid tracking link starting with http:// or https://');
+                    trackingLinkInput.focus();
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof $ !== 'undefined' && $.fn.select2) {
+                $('#doctor').select2({
+                    width: '100%',
+                    placeholder: '--Select doctor--',
+                    allowClear: false,
+                });
+            }
+        });
 
         if (typeof flatpickr !== 'undefined') {
             document.querySelectorAll('.datepicker').forEach(function (input) {

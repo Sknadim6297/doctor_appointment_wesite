@@ -11,12 +11,14 @@ use App\Models\LegalCase;
 use App\Models\HighRiskPlan;
 use App\Models\NormalPlan;
 use App\Models\PolicyReceipt;
+use App\Models\RenewalChequeDeposit;
 use App\Models\Specialization;
 use App\Services\ActivityLogService;
 use App\Services\SecurityAlertService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DoctorController extends Controller
@@ -125,21 +127,36 @@ class DoctorController extends Controller
      */
     public function premiumAmountIndex(Request $request)
     {
-        $search = trim((string) $request->input('search', ''));
+        $this->activityLogService->log(
+            $request,
+            'receipts',
+            'view',
+            description: 'Viewed premium amount listing.',
+            metadata: $request->only(['search_month', 'search_year'])
+        );
 
-        $doctors = Enrollment::query()
-            ->with('specialization')
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($innerQuery) use ($search) {
-                    $innerQuery->where('doctor_name', 'like', '%' . $search . '%')
-                        ->orWhere('money_rc_no', 'like', '%' . $search . '%')
-                        ->orWhere('customer_id_no', 'like', '%' . $search . '%')
-                        ->orWhere('mobile1', 'like', '%' . $search . '%');
-                });
-            })
-            ->orderByDesc('created_at')
-            ->paginate(25)
+        $months = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December',
+        ];
+
+        $selectedMonth = (string) $request->input('search_month', '');
+        $selectedYear = (string) $request->input('search_year', '');
+
+        $baseQuery = $this->premiumAmountQuery($request);
+
+        $doctors = (clone $baseQuery)
+            ->paginate(10)
             ->appends($request->query());
+
+        $printDoctors = (clone $baseQuery)->get();
+
+        $totals = (clone $baseQuery)
+            ->reorder()
+            ->selectRaw('COALESCE(SUM(payment_amount), 0) as premium_total, COALESCE(SUM(service_amount), 0) as gst_total, COALESCE(SUM(total_amount), 0) as total_total')
+            ->first();
+
+        $years = range(2000, (int) now()->format('Y') + 10);
 
         $planCoverageMaps = [
             1 => NormalPlan::query()->select('id', 'coverage_lakh', 'yearly_amount')->orderByDesc('id')->get()->keyBy('id'),
@@ -147,7 +164,68 @@ class DoctorController extends Controller
             3 => ComboPlan::query()->select('id', 'coverage_lakh', 'yearly_amount')->orderByDesc('id')->get()->keyBy('id'),
         ];
 
-        return view('admin.account-management.premium-amount', compact('doctors', 'search', 'planCoverageMaps'));
+        return view('admin.account-management.premium-amount', compact(
+            'doctors',
+            'printDoctors',
+            'months',
+            'years',
+            'selectedMonth',
+            'selectedYear',
+            'planCoverageMaps',
+            'totals'
+        ));
+    }
+
+    /**
+     * Export premium amount listing as CSV.
+     */
+    public function premiumAmountCsvReport(Request $request): StreamedResponse
+    {
+        $fileName = 'premium-amount-report-' . now()->format('Ymd-His') . '.csv';
+        $query = $this->premiumAmountQuery($request);
+
+        return response()->streamDownload(function () use ($query) {
+            $output = fopen('php://output', 'w');
+
+            fputcsv($output, [
+                'SL No',
+                'Doctor Name',
+                'Policy No',
+                'Insurance Coverage',
+                'Premium Amount',
+                'GST',
+                'Commission',
+                'Total Amount',
+                'Renewal Date',
+            ]);
+
+            $slNo = 1;
+            foreach ($query->cursor() as $doctor) {
+                $premiumAmount = (float) ($doctor->payment_amount ?? 0);
+                $gstAmount = (float) ($doctor->service_amount ?? 0);
+                $commissionAmount = round($premiumAmount * 0.15, 2);
+                $totalAmount = (float) ($doctor->total_amount ?? 0);
+                if ($totalAmount <= 0) {
+                    $totalAmount = $premiumAmount + $gstAmount;
+                }
+
+                fputcsv($output, [
+                    $slNo++,
+                    $doctor->doctor_name ?? 'N/A',
+                    $doctor->money_rc_no ?? 'N/A',
+                    filled($doctor->coverage_id) ? ((string) $doctor->coverage_id . ' Lakh') : 'N/A',
+                    'Rs. ' . number_format($premiumAmount, 0) . '/-',
+                    'Rs. ' . number_format($gstAmount, 0) . '/-',
+                    'Rs. ' . number_format($commissionAmount, 0) . '/-',
+                    'Rs. ' . number_format($totalAmount, 0) . '/-',
+                    optional($doctor->created_at)->copy()?->addYear()?->format('d/m/Y') ?? 'N/A',
+                ]);
+            }
+
+            fclose($output);
+        }, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
     }
 
     /**
@@ -419,6 +497,350 @@ class DoctorController extends Controller
             'searchText',
             'summary'
         ));
+    }
+
+    /**
+     * Enrollment cheque deposit listing (legacy-style) — renders a page
+     * that mirrors the old enrollment cheque deposit layout but using
+     * the admin theme and shared query helper `moneyReceiptQuery`.
+     */
+    public function enrollmentChequeDeposit(Request $request)
+    {
+        $this->activityLogService->log(
+            $request,
+            'receipts',
+            'view',
+            description: 'Viewed enrollment cheque deposit listing.',
+            metadata: $request->only(['search_month', 'search_year'])
+        );
+
+        $searchMonth = (int) $request->input('search_month', 0);
+        $searchYear = (int) $request->input('search_year', 0);
+        $searchText = trim((string) $request->input('search', ''));
+
+        $receipts = $this->moneyReceiptQuery($request)
+            ->paginate(25)
+            ->appends($request->query());
+
+        $summary = $this->moneyReceiptQuery($request)
+            ->toBase()
+            ->reorder()
+            ->selectRaw('COALESCE(SUM(payment_amount), 0) as total_payment_amount, COALESCE(SUM(service_amount), 0) as total_service_amount')
+            ->first();
+
+        $months = [
+            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 6 => 'June',
+            7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+        ];
+
+        $years = range((int) date('Y') + 10, 2000);
+
+        $doctors = Enrollment::query()
+            ->select('id', 'doctor_name', 'customer_id_no', 'specialization_id', 'money_rc_no')
+            ->orderBy('doctor_name')
+            ->get();
+
+        $specializations = Specialization::query()->orderBy('name')->get();
+
+        return view('admin.receipts.enrollment-cheque-deposit', compact(
+            'receipts',
+            'months',
+            'years',
+            'doctors',
+            'specializations',
+            'searchMonth',
+            'searchYear',
+            'searchText',
+            'summary'
+        ));
+    }
+
+    /**
+     * CSV export for enrollment cheque deposit listing (legacy-style alias).
+     */
+    public function enrollmentChequeDepositCsv(Request $request): StreamedResponse
+    {
+        $fileName = 'enrollment-cheque-deposit-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use ($request) {
+            $output = fopen('php://output', 'w');
+
+            fputcsv($output, [
+                'SL No',
+                'Doctor',
+                'Money receipt no.',
+                'Cheque no.',
+                'Deposit date',
+                'Amount',
+                'Payment for',
+            ]);
+
+            $slNo = 1;
+            foreach ($this->moneyReceiptQuery($request)->cursor() as $receipt) {
+                $cheque = $receipt->payment_cheque ?: ($receipt->payment_upi_transaction_id ?: 'N.A');
+
+                fputcsv($output, [
+                    $slNo++,
+                    $receipt->doctor_name ?? 'N/A',
+                    $receipt->money_rc_no ?? 'N/A',
+                    $cheque,
+                    optional($receipt->created_at)->format('d/m/Y') ?? 'N/A',
+                    filled($receipt->payment_amount) ? 'Rs. ' . number_format((float) $receipt->payment_amount, 0) . '/-' : 'N/A',
+                    'Enrollment',
+                ]);
+            }
+
+            fclose($output);
+        }, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    /**
+     * Renewal cheque deposit listing (legacy-style) with add/edit modal support.
+     */
+    public function renewalChequeDeposit(Request $request)
+    {
+        $this->activityLogService->log(
+            $request,
+            'receipts',
+            'view',
+            description: 'Viewed renewal cheque deposit listing.',
+            metadata: $request->only(['search_month', 'search_year'])
+        );
+
+        $searchMonth = (int) $request->input('search_month', 0);
+        $searchYear = (int) $request->input('search_year', 0);
+        $searchText = trim((string) $request->input('search', ''));
+
+        $receipts = $this->renewalChequeDepositQuery($request)
+            ->paginate(25)
+            ->appends($request->query());
+
+        $months = [
+            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 6 => 'June',
+            7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+        ];
+
+        $years = range((int) date('Y') + 10, 2000);
+
+        $doctors = Enrollment::query()
+            ->select('id', 'doctor_name', 'customer_id_no', 'specialization_id', 'money_rc_no')
+            ->orderBy('doctor_name')
+            ->get();
+
+        $specializations = Specialization::query()->orderBy('name')->get();
+
+        return view('admin.receipts.renewal-cheque-deposit', compact(
+            'receipts',
+            'months',
+            'years',
+            'doctors',
+            'specializations',
+            'searchMonth',
+            'searchYear',
+            'searchText'
+        ));
+    }
+
+    /**
+     * CSV export for renewal cheque deposit listing.
+     */
+    public function renewalChequeDepositCsv(Request $request): StreamedResponse
+    {
+        $fileName = 'renewal-cheque-deposit-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use ($request) {
+            $output = fopen('php://output', 'w');
+
+            fputcsv($output, [
+                'SL No',
+                'Doctor',
+                'Policy No',
+                'Money receipt no.',
+                'Cheque no.',
+                'Bank',
+                'Bank branch',
+                'Deposit date',
+                'Amount',
+                'Payment for',
+                'Remarks',
+            ]);
+
+            $slNo = 1;
+            foreach ($this->renewalChequeDepositQuery($request)->cursor() as $receipt) {
+                $cheque = $receipt->cheque_no ?: 'N.A';
+
+                fputcsv($output, [
+                    $slNo++,
+                    $receipt->doctor_name ?? 'N/A',
+                    $receipt->policy_no ?? 'N/A',
+                    $receipt->money_reciept_no ?? 'N/A',
+                    $cheque,
+                    $receipt->bank ?: 'N.A',
+                    $receipt->bank_branch ?: 'N.A',
+                    optional($receipt->payment_date ?? $receipt->created_at)->format('d/m/Y') ?? 'N/A',
+                    filled($receipt->cheque_amount) ? 'Rs. ' . number_format((float) $receipt->cheque_amount, 0) . '/-' : 'N/A',
+                    'Renewal',
+                    $receipt->remarks ?: 'None',
+                ]);
+            }
+
+            fclose($output);
+        }, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function renewalChequeDepositStore(Request $request)
+    {
+        $data = $request->validate([
+            'doctor' => 'required|integer|exists:enrollments,id',
+            'member_no' => 'nullable|string|max:255',
+            'policy_no' => 'nullable|string|max:255',
+            'money_reciept_no' => 'nullable|string|max:255',
+            'cheque_no' => 'nullable|string|max:255',
+            'bank' => 'nullable|string|max:255',
+            'bank_branch' => 'nullable|string|max:255',
+            'cheque_amount' => 'nullable|numeric|min:0',
+            'payment_date' => 'nullable|date',
+            'chequeFile' => 'nullable|file|max:10240',
+            'remarks' => 'nullable|string|max:1000',
+        ]);
+
+        $doctor = Enrollment::query()->findOrFail($data['doctor']);
+
+        $filePath = null;
+        if ($request->hasFile('chequeFile')) {
+            $filePath = $request->file('chequeFile')->store('renewal_cheque_deposits', 'public');
+        }
+
+        RenewalChequeDeposit::create([
+            'enrollment_id' => $doctor->id,
+            'doctor_name' => $doctor->doctor_name,
+            'member_no' => $data['member_no'] ?: $doctor->customer_id_no,
+            'policy_no' => $data['policy_no'] ?? null,
+            'money_reciept_no' => $data['money_reciept_no'] ?? null,
+            'cheque_no' => $data['cheque_no'] ?? null,
+            'bank' => $data['bank'] ?? null,
+            'bank_branch' => $data['bank_branch'] ?? null,
+            'cheque_amount' => $data['cheque_amount'] ?? null,
+            'payment_date' => $data['payment_date'] ?? null,
+            'cheque_file' => $filePath,
+            'remarks' => $data['remarks'] ?? null,
+            'created_by' => $request->user()?->id,
+        ]);
+
+        return redirect()
+            ->route('admin.receipts.renewal-cheque-deposit')
+            ->with('success', 'Renewal cheque deposit saved successfully.');
+    }
+
+    public function renewalChequeDepositUpdate(Request $request, $receiptId)
+    {
+        $receipt = RenewalChequeDeposit::query()->findOrFail($receiptId);
+
+        $data = $request->validate([
+            'doctor' => 'required|integer|exists:enrollments,id',
+            'member_no' => 'nullable|string|max:255',
+            'policy_no' => 'nullable|string|max:255',
+            'money_reciept_no' => 'nullable|string|max:255',
+            'cheque_no' => 'nullable|string|max:255',
+            'bank' => 'nullable|string|max:255',
+            'bank_branch' => 'nullable|string|max:255',
+            'cheque_amount' => 'nullable|numeric|min:0',
+            'payment_date' => 'nullable|date',
+            'chequeFile' => 'nullable|file|max:10240',
+            'remarks' => 'nullable|string|max:1000',
+        ]);
+
+        $doctor = Enrollment::query()->findOrFail($data['doctor']);
+
+        if ($request->hasFile('chequeFile')) {
+            if ($receipt->cheque_file) {
+                Storage::disk('public')->delete($receipt->cheque_file);
+            }
+            $receipt->cheque_file = $request->file('chequeFile')->store('renewal_cheque_deposits', 'public');
+        }
+
+        $receipt->update([
+            'enrollment_id' => $doctor->id,
+            'doctor_name' => $doctor->doctor_name,
+            'member_no' => $data['member_no'] ?: $doctor->customer_id_no,
+            'policy_no' => $data['policy_no'] ?? null,
+            'money_reciept_no' => $data['money_reciept_no'] ?? null,
+            'cheque_no' => $data['cheque_no'] ?? null,
+            'bank' => $data['bank'] ?? null,
+            'bank_branch' => $data['bank_branch'] ?? null,
+            'cheque_amount' => $data['cheque_amount'] ?? null,
+            'payment_date' => $data['payment_date'] ?? null,
+            'remarks' => $data['remarks'] ?? null,
+            'updated_by' => $request->user()?->id,
+        ]);
+
+        return redirect()
+            ->route('admin.receipts.renewal-cheque-deposit')
+            ->with('success', 'Renewal cheque deposit updated successfully.');
+    }
+
+    public function renewalChequeDepositDestroy($receiptId)
+    {
+        $receipt = RenewalChequeDeposit::query()->findOrFail($receiptId);
+
+        if ($receipt->cheque_file) {
+            Storage::disk('public')->delete($receipt->cheque_file);
+        }
+
+        $receipt->delete();
+
+        return redirect()
+            ->route('admin.receipts.renewal-cheque-deposit')
+            ->with('success', 'Renewal cheque deposit deleted successfully.');
+    }
+
+    public function renewalChequeDepositShowJson($receiptId): JsonResponse
+    {
+        $receipt = RenewalChequeDeposit::query()->findOrFail($receiptId);
+
+        return response()->json([
+            'success' => true,
+            'receipt' => [
+                'id' => $receipt->id,
+                'doctor' => $receipt->enrollment_id,
+                'doctor_name' => $receipt->doctor_name,
+                'member_no' => $receipt->member_no,
+                'policy_no' => $receipt->policy_no,
+                'money_reciept_no' => $receipt->money_reciept_no,
+                'cheque_no' => $receipt->cheque_no,
+                'bank' => $receipt->bank,
+                'bank_branch' => $receipt->bank_branch,
+                'cheque_amount' => (float) ($receipt->cheque_amount ?? 0),
+                'payment_date' => optional($receipt->payment_date)->format('Y-m-d'),
+                'remarks' => $receipt->remarks,
+                'cheque_file' => $receipt->cheque_file,
+            ],
+        ]);
+    }
+
+    public function getMembershipNo(Request $request): JsonResponse
+    {
+        $doctorId = (int) $request->input('doctor', $request->input('doctor_id', 0));
+
+        $doctor = Enrollment::query()
+            ->select('id', 'doctor_name', 'customer_id_no', 'money_rc_no', 'specialization_id')
+            ->findOrFail($doctorId);
+
+        return response()->json([
+            'success' => true,
+            'doctor' => [
+                'id' => $doctor->id,
+                'doctor_name' => $doctor->doctor_name,
+                'customer_id_no' => $doctor->customer_id_no,
+                'member_no' => $doctor->customer_id_no,
+                'money_rc_no' => $doctor->money_rc_no,
+                'specialization_id' => $doctor->specialization_id,
+            ],
+        ]);
     }
 
     /**
@@ -788,6 +1210,81 @@ class DoctorController extends Controller
                     ->orWhere('customer_id_no', 'like', '%' . $searchText . '%')
                     ->orWhere('mobile1', 'like', '%' . $searchText . '%');
             });
+        }
+
+        return $query;
+    }
+
+    private function chequeDepositQuery(Request $request)
+    {
+        return $this->moneyReceiptQuery($request)
+            ->where(function ($query) {
+                $query->whereNotNull('payment_cheque')
+                    ->where('payment_cheque', '!=', '')
+                    ->orWhere(function ($upi) {
+                        $upi->whereNotNull('payment_upi_transaction_id')
+                            ->where('payment_upi_transaction_id', '!=', '');
+                    })
+                    ->orWhereIn('payment_method', [1, 3]);
+            });
+    }
+
+    private function renewalChequeDepositQuery(Request $request)
+    {
+        $searchMonth = (int) $request->input('search_month', 0);
+        $searchYear = (int) $request->input('search_year', 0);
+        $searchText = trim((string) $request->input('search', ''));
+
+        $query = RenewalChequeDeposit::query()
+            ->orderByDesc('created_at');
+
+        if ($searchMonth > 0) {
+            $query->whereMonth('created_at', $searchMonth);
+        }
+
+        if ($searchYear > 0) {
+            $query->whereYear('created_at', $searchYear);
+        }
+
+        if ($searchText !== '') {
+            $query->where(function ($innerQuery) use ($searchText) {
+                $innerQuery->where('doctor_name', 'like', '%' . $searchText . '%')
+                    ->orWhere('member_no', 'like', '%' . $searchText . '%')
+                    ->orWhere('policy_no', 'like', '%' . $searchText . '%')
+                    ->orWhere('money_reciept_no', 'like', '%' . $searchText . '%')
+                    ->orWhere('cheque_no', 'like', '%' . $searchText . '%')
+                    ->orWhere('bank', 'like', '%' . $searchText . '%')
+                    ->orWhere('bank_branch', 'like', '%' . $searchText . '%')
+                    ->orWhere('remarks', 'like', '%' . $searchText . '%');
+            });
+        }
+
+        return $query;
+    }
+
+    private function premiumAmountQuery(Request $request)
+    {
+        $months = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December',
+        ];
+
+        $selectedMonth = (string) $request->input('search_month', '');
+        $selectedYear = (string) $request->input('search_year', '');
+
+        $query = Enrollment::query()
+            ->with('specialization')
+            ->whereNotNull('money_rc_no')
+            ->where('money_rc_no', '!=', '')
+            ->orderByDesc('created_at');
+
+        if (in_array($selectedMonth, $months, true)) {
+            $monthNumber = array_search($selectedMonth, $months, true) + 1;
+            $query->whereRaw('MONTH(DATE_ADD(created_at, INTERVAL 1 YEAR)) = ?', [$monthNumber]);
+        }
+
+        if (is_numeric($selectedYear) && (int) $selectedYear >= 2000 && (int) $selectedYear <= 2100) {
+            $query->whereRaw('YEAR(DATE_ADD(created_at, INTERVAL 1 YEAR)) = ?', [(int) $selectedYear]);
         }
 
         return $query;

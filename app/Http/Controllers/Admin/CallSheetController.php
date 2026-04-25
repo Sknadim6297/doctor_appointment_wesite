@@ -52,7 +52,7 @@ class CallSheetController extends Controller
             $query->whereYear('created_at', (int) $selectedYear);
         }
 
-        $callSheets = $query->paginate(25)->appends($request->query());
+        $callSheets = $query->paginate(5)->appends($request->query());
         $years = range(2000, ((int) now()->format('Y')) + 10);
         $specializations = Specialization::query()->orderBy('name')->get(['id', 'name']);
         $specializationMap = $specializations->pluck('name', 'id');
@@ -85,6 +85,59 @@ class CallSheetController extends Controller
                 'pdf_url' => route('admin.call-sheet.pdf', $callSheet),
             ],
         ]);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'doctor_name' => 'required|string|max:200',
+            'doctor_email' => 'nullable|email|max:200',
+            'mobile1' => 'nullable|string|max:20',
+            'specialization_id' => 'nullable|integer|exists:specializations,id',
+            'specialization_ids' => 'nullable|array',
+            'specialization_ids.*' => 'nullable|integer|exists:specializations,id',
+        ]);
+
+        $specializationIds = collect($validated['specialization_ids'] ?? [])
+            ->filter(fn ($id) => !empty($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($specializationIds->isEmpty() && !empty($validated['specialization_id'])) {
+            $specializationIds = collect([(int) $validated['specialization_id']]);
+        }
+
+        $primarySpecializationId = $specializationIds->first() ?: ($validated['specialization_id'] ?? null);
+
+        $callSheet = Enrollment::create([
+            'doctor_name' => $validated['doctor_name'],
+            'doctor_email' => $validated['doctor_email'] ?? null,
+            'mobile1' => $validated['mobile1'] ?? null,
+            'specialization_id' => $primarySpecializationId,
+            'call_sheet_specialization_ids' => $specializationIds->isEmpty() ? null : $specializationIds->all(),
+            'hide_from_call_sheet' => false,
+            'created_by' => Auth::id(),
+        ]);
+
+        $this->activityLogService->log(
+            $request,
+            'doctors',
+            'create',
+            $callSheet,
+            Auth::user(),
+            'Created a new marketing call sheet entry.',
+            [
+                'doctor_name' => $validated['doctor_name'],
+                'doctor_email' => $validated['doctor_email'] ?? null,
+                'mobile1' => $validated['mobile1'] ?? null,
+                'specialization_ids' => $specializationIds->all(),
+            ]
+        );
+
+        return redirect()
+            ->route('admin.call-sheet.index', $request->only(['search_month', 'search_year']))
+            ->with('success', 'Call sheet added successfully.');
     }
 
     public function update(Request $request, Enrollment $callSheet)
