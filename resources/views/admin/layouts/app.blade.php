@@ -22,7 +22,7 @@
                       policyOpen: @json(request()->routeIs('admin.policy-receipt.*')),
                       renewOpen: false,
                      legalOpen: @json(request()->routeIs('admin.cases*')),
-                      accountOpen: @json(request()->routeIs('admin.receipts*') || request()->routeIs('admin.premium-amount.*')),
+                      accountOpen: @json(request()->routeIs('admin.receipts*') || request()->routeIs('admin.premium-amount.*') || request()->routeIs('admin.expense-categories.*') || request()->routeIs('admin.manage-expense.*') || request()->routeIs('admin.manage-salary.*') || request()->routeIs('admin.manage-salary.legacy-*')),
                       marketingOpen: @json(request()->routeIs('admin.call-sheet.*')),
                       dispatchedOpen: @json(request()->routeIs('admin.posts*')),
                      bulkOpen: @json(request()->routeIs('admin.bulk-upload.*')),
@@ -161,7 +161,7 @@
                 </div>
 
                 <div class="treeview">
-                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.receipts*') || request()->routeIs('admin.premium-amount.*') ? 'active' : '' }}" @click="toggleMenu('account')">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.receipts*') || request()->routeIs('admin.premium-amount.*') || request()->routeIs('admin.expense-categories.*') || request()->routeIs('admin.manage-expense.*') || request()->routeIs('admin.manage-salary.*') || request()->routeIs('admin.manage-salary.legacy-*') ? 'active' : '' }}" @click="toggleMenu('account')">
                         <span class="flex items-center gap-3">
                             <i class="ri-bank-card-line"></i>
                             <span>Account Management</span>
@@ -173,9 +173,9 @@
                         <li><a href="{{ route('admin.premium-amount.index') }}" class="{{ request()->routeIs('admin.premium-amount.*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Premium Amount</span></span></a></li>
                         <li><a href="{{ route('admin.receipts.enrollment-cheque-deposit') }}" class="{{ request()->routeIs('admin.receipts.enrollment-cheque-deposit') || request()->routeIs('admin.receipts.enrollment-cheque-deposit.csv') || request()->routeIs('admin.receipts.legacy-enrollment-cheque-deposit') || request()->routeIs('admin.receipts.legacy-enrollment-cheque-deposit-search') || request()->routeIs('admin.receipts.legacy-enrollment-cheque-deposit-csv') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Enrollment cheque deposit</span></span></a></li>
                         <li><a href="{{ route('admin.receipts.renewal-cheque-deposit') }}" class="{{ request()->routeIs('admin.receipts.renewal-cheque-deposit') || request()->routeIs('admin.receipts.renewal-cheque-deposit.csv') || request()->routeIs('admin.receipts.legacy-renewal-cheque-deposit') || request()->routeIs('admin.receipts.legacy-renewal-cheque-deposit-search') || request()->routeIs('admin.receipts.legacy-renewal-cheque-deposit-csv') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Renewal cheque deposit</span></span></a></li>
-                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense category</span></span></a></li>
-                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense</span></span></a></li>
-                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage salary</span></span></a></li>
+                        <li><a href="{{ route('admin.expense-categories.index') }}" class="{{ request()->routeIs('admin.expense-categories.*') || request()->routeIs('admin.expense-categories.legacy-index') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense category</span></span></a></li>
+                        <li><a href="{{ route('admin.manage-expense.index') }}" class="{{ request()->routeIs('admin.manage-expense.*') || request()->routeIs('admin.manage-expense.legacy-index') || request()->routeIs('admin.manage-expense.legacy-csv') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense</span></span></a></li>
+                        <li><a href="{{ route('admin.manage-salary.index') }}" class="{{ request()->routeIs('admin.manage-salary.*') || request()->routeIs('admin.manage-salary.legacy-*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage salary</span></span></a></li>
                         <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Office expensions</span></span></a></li>
                     </ul>
                 </div>
