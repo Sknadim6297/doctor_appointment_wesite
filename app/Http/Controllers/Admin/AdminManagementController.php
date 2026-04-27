@@ -116,7 +116,7 @@ class AdminManagementController extends Controller
             ->orderBy('role_title')
             ->get(['role_title', 'role_key']);
 
-        $privilegeCatalog = $this->adminAccessService->privilegeCatalogForView();
+        $privilegeCatalog = $this->adminAccessService->sidebarCatalogForView();
 
         return view('admin.admin-management.create', compact('roleOptions', 'privilegeCatalog'));
     }
@@ -196,8 +196,8 @@ class AdminManagementController extends Controller
             'role_keys.*' => [Rule::exists('admin_roles', 'role_key')],
             'status' => 'required|in:active,inactive',
             'profile_pic' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
-            'privilege_keys' => 'nullable|array',
-            'privilege_keys.*' => 'string',
+            'sidebar_keys' => 'nullable|array',
+            'sidebar_keys.*' => 'string',
         ]);
 
         $profilePicPath = null;
@@ -225,7 +225,8 @@ class AdminManagementController extends Controller
         ]);
 
         $this->adminAccessService->syncRoles($user, $validated['role_keys']);
-        $this->adminAccessService->syncPrivilegesFromSelection($user, $validated['privilege_keys'] ?? []);
+        $this->adminAccessService->syncSidebarCatalogForUser($user);
+        $this->adminAccessService->syncSidebarPrivilegesFromSelection($user, $validated['sidebar_keys'] ?? []);
 
         return redirect()->route('admin.admin-management.index')
             ->with('success', 'Sub admin created successfully!');
@@ -241,13 +242,13 @@ class AdminManagementController extends Controller
             ->orderBy('role_title')
             ->get(['role_title', 'role_key']);
 
-        $this->adminAccessService->syncPrivilegeCatalogForUser($admin);
+        $this->adminAccessService->syncSidebarCatalogForUser($admin);
 
-        $privilegeCatalog = $this->adminAccessService->privilegeCatalogForView();
+        $privilegeCatalog = $this->adminAccessService->sidebarCatalogForView();
         $selectedPrivilegeKeys = $admin->privileges()
+            ->where('group_key', 'sidebar')
             ->where('is_allowed', true)
-            ->get()
-            ->map(fn (AdminPrivilege $privilege) => $privilege->page_key . ':' . $privilege->action_key)
+            ->pluck('page_key')
             ->all();
 
         return view('admin.admin-management.edit', compact('admin', 'roleOptions', 'privilegeCatalog', 'selectedPrivilegeKeys'));
@@ -273,8 +274,8 @@ class AdminManagementController extends Controller
             'role_keys.*' => [Rule::exists('admin_roles', 'role_key')],
             'status' => 'required|in:active,inactive',
             'profile_pic' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
-            'privilege_keys' => 'nullable|array',
-            'privilege_keys.*' => 'string',
+            'sidebar_keys' => 'nullable|array',
+            'sidebar_keys.*' => 'string',
         ]);
 
         $profilePicPath = $admin->profile_pic;
@@ -301,7 +302,8 @@ class AdminManagementController extends Controller
         ]);
 
         $this->adminAccessService->syncRoles($admin, $validated['role_keys']);
-        $this->adminAccessService->syncPrivilegesFromSelection($admin, $validated['privilege_keys'] ?? []);
+        $this->adminAccessService->syncSidebarCatalogForUser($admin);
+        $this->adminAccessService->syncSidebarPrivilegesFromSelection($admin, $validated['sidebar_keys'] ?? []);
 
         return redirect()->route('admin.admin-management.index')
             ->with('success', 'Sub admin updated successfully!');
@@ -347,31 +349,24 @@ class AdminManagementController extends Controller
             return $response;
         }
 
-        $this->adminAccessService->syncPrivilegeCatalogForUser($admin);
+        $this->adminAccessService->syncSidebarCatalogForUser($admin);
 
-        $privileges = AdminPrivilege::query()
-            ->where('user_id', $admin->id)
-            ->orderBy('group_key')
-            ->orderBy('page_key')
-            ->orderBy('action_key')
-            ->get();
-
-        $groupedPrivileges = $privileges->groupBy('group_key')->map(function ($items) {
-            return [
-                'group_title' => (string) $items->first()->group_title,
-                'pages' => $items->groupBy('page_key')->map(function ($pageItems) {
-                    return [
-                        'page_title' => (string) $pageItems->first()->page_title,
-                        'items' => $pageItems->values(),
-                    ];
-                })->values(),
-            ];
-        });
+        $groupedPrivileges = $this->adminAccessService->sidebarCatalogForView();
+        $selectedPrivilegeKeys = $admin->privileges()
+            ->where('group_key', 'sidebar')
+            ->where('is_allowed', true)
+            ->pluck('page_key')
+            ->all();
 
         return view('admin.admin-management.privileges', [
             'admin' => $admin,
             'groupedPrivileges' => $groupedPrivileges,
-            'totalPrivileges' => $privileges->count(),
+            'selectedPrivilegeKeys' => $selectedPrivilegeKeys,
+            'totalPrivileges' => AdminPrivilege::query()
+                ->where('user_id', $admin->id)
+                ->where('group_key', 'sidebar')
+                ->where('is_allowed', true)
+                ->count(),
         ]);
     }
 
@@ -382,16 +377,19 @@ class AdminManagementController extends Controller
         }
 
         $validated = $request->validate([
-            'selected_ids' => 'required|array|min:1',
-            'selected_ids.*' => 'integer|exists:admin_privileges,id',
+            'sidebar_keys' => 'required|array|min:1',
+            'sidebar_keys.*' => 'string',
             'action' => 'required|in:allow,disallow',
         ]);
 
         $isAllowed = $validated['action'] === 'allow';
 
+        $this->adminAccessService->syncSidebarCatalogForUser($admin);
+
         AdminPrivilege::query()
             ->where('user_id', $admin->id)
-            ->whereIn('id', $validated['selected_ids'])
+            ->where('group_key', 'sidebar')
+            ->whereIn('page_key', $validated['sidebar_keys'])
             ->update([
                 'is_allowed' => $isAllowed,
                 'updated_at' => now(),

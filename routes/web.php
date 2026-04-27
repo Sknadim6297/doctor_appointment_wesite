@@ -27,6 +27,18 @@ Route::get('/', function () {
     return redirect()->route('admin.login');
 });
 
+
+Route::get('/run-migrations', function () {
+    Artisan::call('migrate', ['--force' => true]);
+    return "Migrations ran successfully!";
+});
+
+Route::get('/linkstorage', function () {
+    Artisan::call('storage:link');
+    return 'Storage link created!';
+});
+
+
 // Admin Authentication Routes
 Route::prefix('admin')->name('admin.')->group(function () {
     // Guest routes

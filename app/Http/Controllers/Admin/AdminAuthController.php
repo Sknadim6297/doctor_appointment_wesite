@@ -57,6 +57,7 @@ class AdminAuthController extends Controller
             $request->session()->regenerate();
 
             $this->adminAccessService->syncPrivilegeCatalogForUser($user);
+            $this->adminAccessService->syncSidebarCatalogForUser($user);
             $context = $this->clientContextService->fromRequest($request);
 
             AdminLoginLog::create([

@@ -103,7 +103,7 @@
                         @else
                             <a href="{{ route('admin.admin-management.privileges', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-blue-100 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-200" title="User privileges">
                                 <i class="ri-shield-user-line"></i>
-                                <span>Manage ({{ (int) ($admin->allowed_privileges_count ?? 0) }})</span>
+                                <span>Manage Privileges</span>
                             </a>
                         @endif
                     </td>

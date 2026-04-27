@@ -85,6 +85,44 @@ class AdminAccessService
         });
     }
 
+    public function syncSidebarCatalogForUser(User $user): void
+    {
+        $catalog = $this->sidebarCatalogForView();
+
+        DB::transaction(function () use ($user, $catalog): void {
+            foreach ($this->flattenSidebarCatalog($catalog) as $node) {
+                $permissionKey = (string) $node['permission_key'];
+                $legacyKey = (string) $node['key'];
+
+                $privilege = AdminPrivilege::query()->firstOrCreate(
+                    [
+                        'user_id' => $user->id,
+                        'group_key' => 'sidebar',
+                        'page_key' => $permissionKey,
+                        'action_key' => 'view',
+                    ],
+                    [
+                        'group_title' => 'Sidebar Permissions',
+                        'page_title' => $node['title'],
+                        'action_title' => 'Access',
+                        'is_allowed' => false,
+                    ]
+                );
+
+                $legacyPrivilege = AdminPrivilege::query()
+                    ->where('user_id', $user->id)
+                    ->where('group_key', 'sidebar')
+                    ->where('page_key', $legacyKey)
+                    ->where('action_key', 'view')
+                    ->first();
+
+                if ($legacyPrivilege && $legacyPrivilege->is_allowed && !$privilege->is_allowed) {
+                    $privilege->forceFill(['is_allowed' => true])->save();
+                }
+            }
+        });
+    }
+
     public function syncPrivilegesFromSelection(User $user, array $selectedPrivilegeKeys): void
     {
         $normalizedKeys = collect($selectedPrivilegeKeys)
@@ -117,6 +155,38 @@ class AdminAccessService
                         });
                     }
                 })
+                ->update([
+                    'is_allowed' => true,
+                    'updated_at' => now(),
+                ]);
+        });
+    }
+
+    public function syncSidebarPrivilegesFromSelection(User $user, array $selectedSidebarKeys): void
+    {
+        $normalizedKeys = collect($selectedSidebarKeys)
+            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->values();
+
+        $this->syncSidebarCatalogForUser($user);
+
+        DB::transaction(function () use ($user, $normalizedKeys): void {
+            AdminPrivilege::query()
+                ->where('user_id', $user->id)
+                ->where('group_key', 'sidebar')
+                ->update([
+                    'is_allowed' => false,
+                    'updated_at' => now(),
+                ]);
+
+            if ($normalizedKeys->isEmpty()) {
+                return;
+            }
+
+            AdminPrivilege::query()
+                ->where('user_id', $user->id)
+                ->where('group_key', 'sidebar')
+                ->whereIn('page_key', $normalizedKeys->all())
                 ->update([
                     'is_allowed' => true,
                     'updated_at' => now(),
@@ -166,8 +236,107 @@ class AdminAccessService
         })->values()->all();
     }
 
+    public function sidebarCatalogForView(): array
+    {
+        return $this->normalizeSidebarCatalog(config('sidebar_permissions', []));
+    }
+
+    public function allowedSidebarKeysForUser(User $user): array
+    {
+        if ($user->role === 'super_admin') {
+            return array_column($this->flattenSidebarCatalog($this->sidebarCatalogForView()), 'permission_key');
+        }
+
+        $this->syncSidebarCatalogForUser($user);
+
+        return AdminPrivilege::query()
+            ->where('user_id', $user->id)
+            ->where('group_key', 'sidebar')
+            ->where('is_allowed', true)
+            ->pluck('page_key')
+            ->all();
+    }
+
+    public function visibleSidebarCatalogForUser(User $user): array
+    {
+        $catalog = $this->sidebarCatalogForView();
+        $allowed = array_flip($this->allowedSidebarKeysForUser($user));
+
+        return $this->filterSidebarNodes($catalog, $allowed);
+    }
+
     private function defaultActions(): array
     {
         return ['view', 'edit', 'delete'];
+    }
+
+    private function flattenSidebarCatalog(array $nodes): array
+    {
+        $flat = [];
+
+        foreach ($nodes as $node) {
+            if (!is_array($node) || empty($node['key'])) {
+                continue;
+            }
+
+            $flat[] = [
+                'key' => (string) $node['key'],
+                'permission_key' => (string) ($node['permission_key'] ?? ('sidebar.' . $node['key'])),
+                'title' => (string) ($node['title'] ?? $node['key']),
+            ];
+
+            foreach ($this->flattenSidebarCatalog($node['children'] ?? []) as $child) {
+                $flat[] = $child;
+            }
+        }
+
+        return $flat;
+    }
+
+    private function filterSidebarNodes(array $nodes, array $allowed): array
+    {
+        $filtered = [];
+
+        foreach ($nodes as $node) {
+            if (!is_array($node) || empty($node['key'])) {
+                continue;
+            }
+
+            $permissionKey = (string) ($node['permission_key'] ?? ('sidebar.' . $node['key']));
+            $isAllowed = isset($allowed[$permissionKey]);
+            $children = $isAllowed
+                ? ($node['children'] ?? [])
+                : $this->filterSidebarNodes($node['children'] ?? [], $allowed);
+
+            if (!$isAllowed && empty($children)) {
+                continue;
+            }
+
+            $node['children'] = $children;
+            $filtered[] = $node;
+        }
+
+        return $filtered;
+    }
+
+    private function normalizeSidebarCatalog(array $nodes, string $prefix = 'sidebar'): array
+    {
+        $normalized = [];
+
+        foreach ($nodes as $node) {
+            if (!is_array($node) || empty($node['key'])) {
+                continue;
+            }
+
+            $permissionKey = $prefix . '.' . (string) $node['key'];
+
+            $normalizedNode = $node;
+            $normalizedNode['permission_key'] = $permissionKey;
+            $normalizedNode['children'] = $this->normalizeSidebarCatalog($node['children'] ?? [], $permissionKey);
+
+            $normalized[] = $normalizedNode;
+        }
+
+        return $normalized;
     }
 }
