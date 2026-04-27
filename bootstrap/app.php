@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
             'super_admin' => \App\Http\Middleware\SuperAdminMiddleware::class,
             'admin.privilege' => \App\Http\Middleware\AdminPrivilegeMiddleware::class,
+            'sensitive.otp' => \App\Http\Middleware\SensitiveDataOtpMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

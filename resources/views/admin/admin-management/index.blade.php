@@ -79,9 +79,11 @@
                             @php($adminRoleLabels = [$roleMap[$admin->role] ?? ucwords(str_replace('_', ' ', $admin->role))])
                         @endif
                         <div class="flex flex-wrap gap-1">
-                            @foreach($adminRoleLabels as $label)
+                            @forelse($adminRoleLabels as $label)
                                 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{{ $label }}</span>
-                            @endforeach
+                            @empty
+                                <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500">Unassigned</span>
+                            @endforelse
                         </div>
                     </td>
                     <td>{{ $admin->phone ?: '-' }}</td>
@@ -93,10 +95,17 @@
                         @endif
                     </td>
                     <td>
-                        <a href="{{ route('admin.admin-management.privileges', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-blue-100 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-200" title="User privileges">
-                            <i class="ri-shield-user-line"></i>
-                            <span>Manage ({{ (int) ($admin->allowed_privileges_count ?? 0) }})</span>
-                        </a>
+                        @if($admin->hasAdminRole('super_admin'))
+                            <span class="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700" title="Super admin has full access">
+                                <i class="ri-lock-unlock-line"></i>
+                                <span>All Access</span>
+                            </span>
+                        @else
+                            <a href="{{ route('admin.admin-management.privileges', $admin) }}" class="inline-flex items-center gap-1 rounded-lg bg-blue-100 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-200" title="User privileges">
+                                <i class="ri-shield-user-line"></i>
+                                <span>Manage ({{ (int) ($admin->allowed_privileges_count ?? 0) }})</span>
+                            </a>
+                        @endif
                     </td>
                     <td>
                         <div class="flex flex-wrap items-center gap-2">

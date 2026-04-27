@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('group_title', 150);
             $table->string('page_key', 150);
             $table->string('page_title', 255);
-            $table->boolean('is_allowed')->default(true);
+            $table->boolean('is_allowed')->default(false);
             $table->timestamps();
 
             $table->unique(['user_id', 'page_key']);

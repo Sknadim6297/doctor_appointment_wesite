@@ -29,6 +29,8 @@
             <p class="mb-3 text-sm text-red-600">{{ $message }}</p>
         @enderror
 
+        <p class="mb-3 text-xs text-slate-500">Select one or more rows, then click Allow or Dis-Allow to update access.</p>
+
         <div class="overflow-x-auto">
             <table class="data-table min-w-[920px]" id="example44">
                 <thead>
@@ -88,11 +90,25 @@
 
         if (!parentCheckbox || !children.length) return;
 
+        const syncParentState = () => {
+            const checkedCount = Array.from(children).filter((checkbox) => checkbox.checked).length;
+            parentCheckbox.checked = checkedCount === children.length;
+            parentCheckbox.indeterminate = checkedCount > 0 && checkedCount < children.length;
+        };
+
         parentCheckbox.addEventListener('change', function () {
             children.forEach((checkbox) => {
                 checkbox.checked = parentCheckbox.checked;
             });
+
+            syncParentState();
         });
+
+        children.forEach((checkbox) => {
+            checkbox.addEventListener('change', syncParentState);
+        });
+
+        syncParentState();
     });
 </script>
 @endsection

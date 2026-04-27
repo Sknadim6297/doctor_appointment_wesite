@@ -5,7 +5,9 @@
 
 @section('content')
 @php
-    $change = (($payments['this_year'] - $payments['previous_year']) / $payments['previous_year']) * 100;
+    $change = $payments['previous_year'] > 0
+        ? (($payments['this_year'] - $payments['previous_year']) / $payments['previous_year']) * 100
+        : 0;
     $kpiCards = [
         ['key' => 'enrollment_doctors', 'label' => 'Enrollment Doctors', 'icon' => 'ri-user-heart-line', 'tone' => 'kpi-blue'],
         ['key' => 'money_receipts', 'label' => 'Money Receipts', 'icon' => 'ri-secure-payment-line', 'tone' => 'kpi-green'],
@@ -47,17 +49,17 @@
 <div class="mb-6 grid gap-6 xl:grid-cols-2">
     <section class="section-card">
         <h3 class="section-title">Last 6 Month Report</h3>
-        <div class="metric-row"><span class="font-semibold text-slate-700">Enrollment</span><strong class="text-blue-700">145</strong></div>
-        <div class="metric-row"><span class="font-semibold text-slate-700">Renew</span><strong class="text-emerald-700">89</strong></div>
-        <div class="metric-row"><span class="font-semibold text-slate-700">Lapse</span><strong class="text-rose-700">32</strong></div>
+        <div class="metric-row"><span class="font-semibold text-slate-700">Enrollment</span><strong class="text-blue-700">{{ number_format($lastSixMonthsEnrollment) }}</strong></div>
+        <div class="metric-row"><span class="font-semibold text-slate-700">Renew</span><strong class="text-emerald-700">{{ number_format($lastSixMonthsRenew) }}</strong></div>
+        <div class="metric-row"><span class="font-semibold text-slate-700">Lapse</span><strong class="text-rose-700">{{ number_format($lastSixMonthsLapse) }}</strong></div>
     </section>
 
     <section class="section-card">
         <h3 class="section-title">Enrollment Comparison</h3>
-        <div class="metric-row"><span>Previous Year Enrollment</span><strong>234</strong></div>
-        <div class="metric-row"><span>This Year Enrollment</span><strong>312</strong></div>
-        <div class="metric-row"><span>Previous Year Renew</span><strong>189</strong></div>
-        <div class="metric-row"><span>This Year Renew</span><strong>221</strong></div>
+        <div class="metric-row"><span>Previous Year Enrollment</span><strong>{{ number_format($yearComparison['previous_enrollment']) }}</strong></div>
+        <div class="metric-row"><span>This Year Enrollment</span><strong>{{ number_format($yearComparison['current_enrollment']) }}</strong></div>
+        <div class="metric-row"><span>Previous Year Renew</span><strong>{{ number_format($yearComparison['previous_renew']) }}</strong></div>
+        <div class="metric-row"><span>This Year Renew</span><strong>{{ number_format($yearComparison['current_renew']) }}</strong></div>
     </section>
 </div>
 
@@ -111,7 +113,7 @@
 <section class="section-card">
     <div class="mb-4 flex items-center justify-between">
         <h3 class="section-title mb-0">Latest Enrolled Doctors</h3>
-        <button class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">View All</button>
+        <a href="{{ route('admin.enrollment') }}" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">View All</a>
     </div>
 
     <div class="overflow-x-auto">
@@ -124,20 +126,28 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach($latest_doctors as $doctor)
+                @forelse($latest_doctors as $doctor)
                     <tr>
                         <td>
                             <div class="flex items-center gap-3">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 font-bold text-blue-700">{{ strtoupper(substr(str_replace('DR. ', '', $doctor['name']), 0, 1)) }}</div>
-                                <p class="font-semibold text-slate-800">{{ $doctor['name'] }}</p>
+                                @php
+                                    $displayName = trim((string) $doctor->doctor_name);
+                                    $initial = strtoupper(substr(preg_replace('/^DR\.\s*/i', '', $displayName), 0, 1));
+                                @endphp
+                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 font-bold text-blue-700">{{ $initial !== '' ? $initial : 'D' }}</div>
+                                <p class="font-semibold text-slate-800">{{ $displayName !== '' ? $displayName : 'N/A' }}</p>
                             </div>
                         </td>
-                        <td class="font-medium text-slate-600">{{ $doctor['date'] }}</td>
+                        <td class="font-medium text-slate-600">{{ optional($doctor->created_at)->format('d/m/Y') ?? 'N/A' }}</td>
                         <td class="text-right">
-                            <button class="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">Open Profile</button>
+                            <a href="{{ route('admin.doctors.show', $doctor->id) }}" class="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">Open Profile</a>
                         </td>
                     </tr>
-                @endforeach
+                @empty
+                    <tr>
+                        <td colspan="3" class="text-center text-slate-500">No enrolled doctors found.</td>
+                    </tr>
+                @endforelse
             </tbody>
         </table>
     </div>

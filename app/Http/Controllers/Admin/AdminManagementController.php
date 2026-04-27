@@ -33,7 +33,14 @@ class AdminManagementController extends Controller
             ->pluck('role_title', 'role_key')
             ->toArray();
 
+        // Ensure built-in legacy roles are visible and filterable in the panel.
+        $roleMap = array_merge([
+            'super_admin' => 'Super Admin',
+            'admin' => 'Admin',
+        ], $roleMap);
+
         $roleKeys = array_keys($roleMap);
+        $customRoleKeys = AdminRole::query()->pluck('role_key')->all();
 
         $adminsQuery = User::query()
             ->with('roles:id,role_key,role_title')
@@ -56,13 +63,12 @@ class AdminManagementController extends Controller
                             ->orWhereNotIn('action', ['login', 'logout']);
                     }),
             ])
-            ->where(function (Builder $query) use ($roleKeys) {
-            $query->whereIn('role', $roleKeys)
-                ->orWhere('role', 'super_admin')
-                ->orWhereHas('roles', function (Builder $roleQuery) use ($roleKeys) {
-                    $roleQuery->whereIn('role_key', $roleKeys);
-                });
-                });
+            ->where(function (Builder $query) use ($roleKeys, $customRoleKeys) {
+                $query->whereIn('role', $roleKeys)
+                    ->orWhereHas('roles', function (Builder $roleQuery) use ($customRoleKeys) {
+                        $roleQuery->whereIn('role_key', $customRoleKeys);
+                    });
+            });
 
         if ($request->get('status') === 'active') {
             $adminsQuery->where('is_active', true);
@@ -73,7 +79,7 @@ class AdminManagementController extends Controller
         }
 
         $selectedRole = (string) $request->query('role', '');
-        if ($selectedRole !== '' && in_array($selectedRole, array_merge($roleKeys, ['super_admin']), true)) {
+        if ($selectedRole !== '' && in_array($selectedRole, $roleKeys, true)) {
             $adminsQuery->where(function (Builder $query) use ($selectedRole) {
                 $query->where('role', $selectedRole)
                     ->orWhereHas('roles', function (Builder $roleQuery) use ($selectedRole) {
@@ -337,6 +343,10 @@ class AdminManagementController extends Controller
 
     public function privileges(User $admin)
     {
+        if ($response = $this->rejectProtectedAdminMutation($admin)) {
+            return $response;
+        }
+
         $this->adminAccessService->syncPrivilegeCatalogForUser($admin);
 
         $privileges = AdminPrivilege::query()
@@ -367,6 +377,10 @@ class AdminManagementController extends Controller
 
     public function updatePrivileges(Request $request, User $admin)
     {
+        if ($response = $this->rejectProtectedAdminMutation($admin)) {
+            return $response;
+        }
+
         $validated = $request->validate([
             'selected_ids' => 'required|array|min:1',
             'selected_ids.*' => 'integer|exists:admin_privileges,id',

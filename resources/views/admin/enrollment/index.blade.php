@@ -5,6 +5,12 @@
 
 @section('content')
 <style>
+    .renew-shell {
+        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        border: 1px solid #dbe4f2;
+        border-radius: 1rem;
+        box-shadow: 0 14px 28px rgba(15, 23, 42, 0.05);
+    }
     .renew-toolbar {
         background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
         border: 1px solid #dbeafe;
@@ -28,12 +34,42 @@
         color: #0f172a;
         letter-spacing: 0.01em;
     }
+    .renew-summary {
+        display: grid;
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+    .renew-stat {
+        border: 1px solid #dbeafe;
+        border-radius: 0.85rem;
+        background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+        padding: 0.85rem 0.9rem;
+    }
+    .renew-stat-label {
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #475569;
+        font-weight: 700;
+    }
+    .renew-stat-value {
+        margin-top: 0.25rem;
+        font-size: 1.2rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    @media (min-width: 768px) {
+        .renew-summary {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
     .renew-table {
         border-collapse: separate;
         border-spacing: 0;
         border: 1px solid #dbe3ee;
         border-radius: 0.85rem;
         overflow: hidden;
+        min-width: 1500px;
     }
     .renew-table thead th {
         background: #0f172a;
@@ -72,9 +108,25 @@
         font-size: 0.75rem;
         font-weight: 700;
     }
+    .renew-empty {
+        text-align: center;
+        padding: 2rem 1rem;
+    }
+    .renew-empty h4 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .renew-empty p {
+        margin-top: 0.3rem;
+        font-size: 0.85rem;
+        color: #64748b;
+    }
 </style>
 
-<div class="section-card">
+<div class="section-card space-y-5">
+    <div class="renew-shell p-5 md:p-6">
     <div class="renew-toolbar mb-5 rounded-xl p-4">
         <form method="GET" action="{{ route('admin.doctors.index') }}" id="search_form" class="space-y-3">
             <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
@@ -142,10 +194,29 @@
         </div>
     @endif
 
+    <div class="renew-summary mb-5">
+        <article class="renew-stat">
+            <p class="renew-stat-label">Total Records</p>
+            <p class="renew-stat-value">{{ $enrollments->total() }}</p>
+        </article>
+        <article class="renew-stat">
+            <p class="renew-stat-label">Selected Renewal Type</p>
+            <p class="renew-stat-value text-base">
+                {{ $renewType === 'renewed' ? 'Renewed' : ($renewType === 'upcoming_renewed' ? 'Next Renewal' : 'Not Selected') }}
+            </p>
+        </article>
+        <article class="renew-stat">
+            <p class="renew-stat-label">Filter Window</p>
+            <p class="renew-stat-value text-base">
+                {{ $searchMonth ?: 'All Months' }} / {{ $searchYear ?: 'All Years' }}
+            </p>
+        </article>
+    </div>
+
     <div class="mb-2 text-sm font-semibold text-slate-700">Search:</div>
 
     <div class="overflow-x-auto">
-        <table class="renew-table data-table table table-striped table-bordered bootstrap-datatable">
+        <table class="renew-table data-table w-full">
             <thead>
                 <tr>
                     <th>SL No</th>
@@ -234,50 +305,9 @@
                     </tr>
                 @empty
                     <tr>
-                        <td><b>1</b></td>
-
-                        <td>
-                            <b>
-                                <a href="javascript:void(0);" class="text-blue-700 hover:underline">DR.IMTIAZ AHMED</a>
-                                /9434163237
-                            </b>
-                            <br>
-                            <label class="renew-pill renew-pill-active">Renewal</label>
-                        </td>
-
-                        <td><b>Eye Surgeon <br>(Ophthalmologist) <br>(PLAN-CA)/<br>Combo</b></td>
-                        <td><b>MBBS/DOMS/MS/<br>45420/<br>1987</b></td>
-                        <td><b>0310002725P117184932(2026-27)/<br>IND-19000786-M-0001</b></td>
-                        <td><b>30 Lakh</b></td>
-                        <td class="break-words" style="max-width: 80px;"><b>Rs.5664/-</b></td>
-                        <td><b>Rs.14797/-</b></td>
-                        <td><b>04/02/2026</b></td>
-                        <td><b>04/02/2027</b></td>
-                        <td><b>SUPARNA BISWAS/<br>9681203303</b></td>
-
-                        <td>
-                            <span title="Auto email disabled">
-                                <i class="ri-close-circle-fill text-red-600" style="font-size: 1.2rem;" aria-hidden="true"></i>
-                            </span>
-                        </td>
-
-                        <td>
-                            <span title="Auto SMS disabled">
-                                <i class="ri-close-circle-fill text-red-600" style="font-size: 1.2rem;" aria-hidden="true"></i>
-                            </span>
-                        </td>
-
-                        <td>
-                            <div class="flex flex-wrap gap-1">
-                                <a class="renew-action bg-emerald-600" title="View" href="javascript:void(0);"><i class="ri-eye-line"></i></a>
-                                <a class="renew-action bg-slate-700" title="Edit" href="javascript:void(0);"><i class="ri-pencil-line"></i></a>
-                                <a class="renew-action bg-blue-600" title="Document" href="javascript:void(0);"><i class="ri-file-line"></i></a>
-                                <a class="renew-action bg-red-600" title="Renew" href="javascript:void(0);">R</a>
-                                <a class="renew-action bg-cyan-600" title="Send mail" href="javascript:void(0);"><i class="ri-mail-line"></i></a>
-                                <a class="renew-action bg-sky-600" title="Send SMS" href="javascript:void(0);"><i class="ri-message-2-line"></i></a>
-                                <a class="renew-action bg-green-700" title="Resend bond" href="javascript:void(0);"><i class="ri-send-plane-line"></i></a>
-                                <a class="renew-action bg-indigo-600" title="Resend money receipt" href="javascript:void(0);"><i class="ri-mail-send-line"></i></a>
-                            </div>
+                        <td colspan="14" class="renew-empty">
+                            <h4>Search to see result</h4>
+                            <p>Select renew type, month, or year and click Search.</p>
                         </td>
                     </tr>
                 @endforelse
@@ -288,6 +318,7 @@
     @if($enrollments->hasPages())
         <div class="mt-4">{{ $enrollments->links() }}</div>
     @endif
+    </div>
 </div>
 
 <script>

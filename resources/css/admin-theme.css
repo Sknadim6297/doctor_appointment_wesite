@@ -190,7 +190,7 @@ body {
 
 .section-card {
     @apply rounded-2xl p-6;
-    background: var(--surface-1);
+    background-color: var(--surface-1);
     border: 1px solid var(--line);
     box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
 }

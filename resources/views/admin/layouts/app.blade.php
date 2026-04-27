@@ -9,6 +9,98 @@
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/css/admin-theme.css', 'resources/js/app.js'])
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        .otp-backdrop {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.7);
+            z-index: 90;
+            padding: 1rem;
+        }
+        .otp-backdrop.show {
+            display: flex;
+        }
+        .otp-modal {
+            width: min(100%, 430px);
+            border-radius: 1rem;
+            border: 1px solid #dbe4f2;
+            background: #fff;
+            box-shadow: 0 24px 64px rgba(2, 8, 23, 0.35);
+            overflow: hidden;
+        }
+        .otp-head {
+            padding: 0.95rem 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+            font-weight: 800;
+            color: #0f172a;
+        }
+        .otp-body {
+            padding: 1rem;
+        }
+        .otp-help {
+            margin-bottom: 0.75rem;
+            color: #475569;
+            font-size: 0.86rem;
+            line-height: 1.35;
+        }
+        .otp-input {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.7rem;
+            padding: 0.6rem 0.75rem;
+            font-size: 0.95rem;
+            letter-spacing: 0.2em;
+            text-align: center;
+            font-weight: 700;
+        }
+        .otp-input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+        }
+        .otp-actions {
+            margin-top: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            gap: 0.5rem;
+        }
+        .otp-btn {
+            border: 0;
+            border-radius: 0.65rem;
+            padding: 0.52rem 0.8rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .otp-btn-secondary {
+            background: #475569;
+            color: #fff;
+        }
+        .otp-btn-primary {
+            background: #2563eb;
+            color: #fff;
+        }
+        .otp-btn-ghost {
+            background: #e2e8f0;
+            color: #1e293b;
+        }
+        .otp-status {
+            min-height: 1.2rem;
+            margin-top: 0.55rem;
+            font-size: 0.8rem;
+            color: #334155;
+        }
+        .otp-status.error {
+            color: #dc2626;
+        }
+        .otp-status.success {
+            color: #0f766e;
+        }
+    </style>
 </head>
 <body class="admin-shell" x-data="{ sidebarOpen: false }">
     <div class="flex min-h-screen overflow-hidden">
@@ -22,7 +114,7 @@
                       policyOpen: @json(request()->routeIs('admin.policy-receipt.*')),
                       renewOpen: false,
                      legalOpen: @json(request()->routeIs('admin.cases*')),
-                      accountOpen: @json(request()->routeIs('admin.receipts*') || request()->routeIs('admin.premium-amount.*') || request()->routeIs('admin.expense-categories.*') || request()->routeIs('admin.manage-expense.*') || request()->routeIs('admin.manage-salary.*') || request()->routeIs('admin.manage-salary.legacy-*')),
+                      accountOpen: @json(request()->routeIs('admin.receipts*') || request()->routeIs('admin.premium-amount.*') || request()->routeIs('admin.expense-categories.*') || request()->routeIs('admin.manage-expense.*') || request()->routeIs('admin.manage-salary.*') || request()->routeIs('admin.manage-salary.legacy-*') || request()->routeIs('admin.office-expensions.*') || request()->routeIs('admin.office-expensions.legacy-*')),
                       marketingOpen: @json(request()->routeIs('admin.call-sheet.*')),
                       dispatchedOpen: @json(request()->routeIs('admin.posts*')),
                      bulkOpen: @json(request()->routeIs('admin.bulk-upload.*')),
@@ -143,7 +235,7 @@
                         <i class="ri-arrow-right-s-line tree-arrow" :class="{ 'rotate-90': renewOpen }"></i>
                     </button>
                     <ul class="tree-menu" x-show="renewOpen" x-transition.opacity x-cloak>
-                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Renew doctor</span></span></a></li>
+                        <li><a href="{{ route('admin.doctors.index', ['renew_type' => 'upcoming_renewed']) }}" class="{{ request()->routeIs('admin.doctors.index') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Renew doctor</span></span></a></li>
                     </ul>
                 </div>
 
@@ -161,7 +253,7 @@
                 </div>
 
                 <div class="treeview">
-                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.receipts*') || request()->routeIs('admin.premium-amount.*') || request()->routeIs('admin.expense-categories.*') || request()->routeIs('admin.manage-expense.*') || request()->routeIs('admin.manage-salary.*') || request()->routeIs('admin.manage-salary.legacy-*') ? 'active' : '' }}" @click="toggleMenu('account')">
+                    <button type="button" class="tree-toggle nav-link w-full {{ request()->routeIs('admin.receipts*') || request()->routeIs('admin.premium-amount.*') || request()->routeIs('admin.expense-categories.*') || request()->routeIs('admin.manage-expense.*') || request()->routeIs('admin.manage-salary.*') || request()->routeIs('admin.manage-salary.legacy-*') || request()->routeIs('admin.office-expensions.*') || request()->routeIs('admin.office-expensions.legacy-*') ? 'active' : '' }}" @click="toggleMenu('account')">
                         <span class="flex items-center gap-3">
                             <i class="ri-bank-card-line"></i>
                             <span>Account Management</span>
@@ -176,7 +268,7 @@
                         <li><a href="{{ route('admin.expense-categories.index') }}" class="{{ request()->routeIs('admin.expense-categories.*') || request()->routeIs('admin.expense-categories.legacy-index') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense category</span></span></a></li>
                         <li><a href="{{ route('admin.manage-expense.index') }}" class="{{ request()->routeIs('admin.manage-expense.*') || request()->routeIs('admin.manage-expense.legacy-index') || request()->routeIs('admin.manage-expense.legacy-csv') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage expense</span></span></a></li>
                         <li><a href="{{ route('admin.manage-salary.index') }}" class="{{ request()->routeIs('admin.manage-salary.*') || request()->routeIs('admin.manage-salary.legacy-*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Manage salary</span></span></a></li>
-                        <li><a href="#"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Office expensions</span></span></a></li>
+                        <li><a href="{{ route('admin.office-expensions.index') }}" class="{{ request()->routeIs('admin.office-expensions.*') || request()->routeIs('admin.office-expensions.legacy-*') ? 'active' : '' }}"><span class="submenu-left"><i class="ri-list-check-2"></i><span>Office expensions</span></span></a></li>
                     </ul>
                 </div>
 
@@ -293,6 +385,192 @@
             </main>
         </div>
     </div>
+
+    @php
+        $requiresSensitiveOtp = auth()->check() && !in_array(auth()->user()->role, ['super_admin', 'admin'], true);
+    @endphp
+
+    <div id="sensitiveOtpModal" class="otp-backdrop" aria-hidden="true">
+        <div class="otp-modal" role="dialog" aria-modal="true" aria-labelledby="otpModalTitle">
+            <div class="otp-head" id="otpModalTitle">OTP verification required</div>
+            <div class="otp-body">
+                <p class="otp-help">To view sensitive details, verify with OTP sent to your registered email/mobile.</p>
+                <input id="sensitiveOtpInput" class="otp-input" type="text" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit OTP">
+                <div id="sensitiveOtpStatus" class="otp-status"></div>
+                <div class="otp-actions">
+                    <button type="button" class="otp-btn otp-btn-ghost" id="sensitiveOtpCancel">Cancel</button>
+                    <button type="button" class="otp-btn otp-btn-secondary" id="sensitiveOtpResend">Resend OTP</button>
+                    <button type="button" class="otp-btn otp-btn-primary" id="sensitiveOtpVerify">Verify & Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const requiresSensitiveOtp = @json($requiresSensitiveOtp);
+            if (!requiresSensitiveOtp) {
+                return;
+            }
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const requestUrl = @json(route('admin.sensitive-otp.request'));
+            const verifyUrl = @json(route('admin.sensitive-otp.verify'));
+
+            const modal = document.getElementById('sensitiveOtpModal');
+            const input = document.getElementById('sensitiveOtpInput');
+            const statusBox = document.getElementById('sensitiveOtpStatus');
+            const cancelBtn = document.getElementById('sensitiveOtpCancel');
+            const resendBtn = document.getElementById('sensitiveOtpResend');
+            const verifyBtn = document.getElementById('sensitiveOtpVerify');
+
+            let currentSubjectType = 'enrollment';
+            let currentSubjectId = null;
+            let redirectUrl = '';
+
+            function setStatus(message, type) {
+                statusBox.textContent = message || '';
+                statusBox.className = 'otp-status' + (type ? ' ' + type : '');
+            }
+
+            function toggleButtons(disabled) {
+                [cancelBtn, resendBtn, verifyBtn].forEach((button) => {
+                    if (button) {
+                        button.disabled = disabled;
+                    }
+                });
+            }
+
+            async function postJson(url, payload) {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.message || 'Request failed.');
+                }
+
+                return data;
+            }
+
+            async function requestOtp() {
+                if (!currentSubjectId || !redirectUrl) {
+                    return;
+                }
+
+                toggleButtons(true);
+                setStatus('Sending OTP...', '');
+
+                try {
+                    const result = await postJson(requestUrl, {
+                        subject_type: currentSubjectType,
+                        subject_id: currentSubjectId,
+                        redirect_url: redirectUrl,
+                    });
+
+                    setStatus(result.message || 'OTP sent.', 'success');
+                    input.value = '';
+                    input.focus();
+                } catch (error) {
+                    setStatus(error.message || 'Unable to send OTP.', 'error');
+                } finally {
+                    toggleButtons(false);
+                }
+            }
+
+            async function verifyOtp() {
+                const otp = input.value.trim();
+                if (!/^\d{6}$/.test(otp)) {
+                    setStatus('Please enter a valid 6-digit OTP.', 'error');
+                    return;
+                }
+
+                toggleButtons(true);
+                setStatus('Verifying OTP...', '');
+
+                try {
+                    const result = await postJson(verifyUrl, {
+                        subject_type: currentSubjectType,
+                        subject_id: currentSubjectId,
+                        otp,
+                        redirect_url: redirectUrl,
+                    });
+
+                    setStatus('OTP verified. Redirecting...', 'success');
+                    window.location.href = result.redirect_url || redirectUrl;
+                } catch (error) {
+                    setStatus(error.message || 'OTP verification failed.', 'error');
+                } finally {
+                    toggleButtons(false);
+                }
+            }
+
+            function closeModal() {
+                modal.classList.remove('show');
+                modal.setAttribute('aria-hidden', 'true');
+                currentSubjectId = null;
+                redirectUrl = '';
+                setStatus('', '');
+            }
+
+            function openModal(subjectId, nextUrl) {
+                currentSubjectId = subjectId;
+                redirectUrl = nextUrl;
+                modal.classList.add('show');
+                modal.setAttribute('aria-hidden', 'false');
+                requestOtp();
+            }
+
+            document.addEventListener('click', function (event) {
+                const link = event.target.closest('a[href]');
+                if (!link) {
+                    return;
+                }
+
+                const href = link.getAttribute('href');
+                if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
+                    return;
+                }
+
+                const absoluteUrl = new URL(href, window.location.origin);
+                const doctorMatch = absoluteUrl.pathname.match(/^\/admin\/doctors\/(\d+)$/);
+                const receiptViewMatch = absoluteUrl.pathname.match(/^\/admin\/receipts\/(\d+)\/view$/);
+                const subjectId = doctorMatch ? Number(doctorMatch[1]) : (receiptViewMatch ? Number(receiptViewMatch[1]) : null);
+
+                if (!subjectId) {
+                    return;
+                }
+
+                event.preventDefault();
+                openModal(subjectId, absoluteUrl.toString());
+            });
+
+            cancelBtn.addEventListener('click', closeModal);
+            resendBtn.addEventListener('click', requestOtp);
+            verifyBtn.addEventListener('click', verifyOtp);
+
+            input.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    verifyOtp();
+                }
+            });
+
+            modal.addEventListener('click', function (event) {
+                if (event.target === modal) {
+                    closeModal();
+                }
+            });
+        })();
+    </script>
+
     @stack('scripts')
 </body>
 </html>

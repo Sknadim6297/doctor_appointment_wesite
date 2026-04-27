@@ -56,7 +56,7 @@ class AdminAccessService
                     foreach ($actions as $actionKey) {
                         $actionKey = (string) $actionKey;
 
-                        AdminPrivilege::query()->updateOrCreate(
+                        $privilege = AdminPrivilege::query()->firstOrCreate(
                             [
                                 'user_id' => $user->id,
                                 'page_key' => $pageKey,
@@ -67,8 +67,18 @@ class AdminAccessService
                                 'group_title' => $groupTitle,
                                 'page_title' => $pageTitle,
                                 'action_title' => Str::headline($actionKey),
+                                'is_allowed' => false,
                             ]
                         );
+
+                        if (!$privilege->wasRecentlyCreated) {
+                            $privilege->forceFill([
+                                'group_key' => (string) $groupKey,
+                                'group_title' => $groupTitle,
+                                'page_title' => $pageTitle,
+                                'action_title' => Str::headline($actionKey),
+                            ])->save();
+                        }
                     }
                 }
             }

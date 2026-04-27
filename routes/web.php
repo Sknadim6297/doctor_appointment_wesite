@@ -20,6 +20,8 @@ use App\Http\Controllers\Admin\CaseController;
 use App\Http\Controllers\Admin\ExpenseCategoryController;
 use App\Http\Controllers\Admin\ExpenseController;
 use App\Http\Controllers\Admin\SalaryController;
+use App\Http\Controllers\Admin\OfficeExpenseController;
+use App\Http\Controllers\Admin\SensitiveAccessOtpController;
 
 Route::get('/', function () {
     return redirect()->route('admin.login');
@@ -58,7 +60,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('doctors/csv-report', [DoctorController::class, 'csvReport'])->middleware('admin.privilege:doctors,view')->name('doctors.csv-report');
         Route::get('index.php/doctor_list/membership_nos', [DoctorController::class, 'membershipNumbers'])->middleware('admin.privilege:doctors,view')->name('doctors.membership-nos.legacy');
         Route::match(['get', 'post'], 'index.php/doctor_list/doctor_search', [DoctorController::class, 'membershipNumbers'])->middleware('admin.privilege:doctors,view')->name('doctors.membership-search.legacy');
-        Route::get('doctors/{doctor}', [DoctorController::class, 'show'])->middleware('admin.privilege:doctors,view')->name('doctors.show');
+        Route::get('doctors/{doctor}', [DoctorController::class, 'show'])->middleware(['admin.privilege:doctors,view', 'sensitive.otp:enrollment,doctor'])->name('doctors.show');
         Route::post('doctors/{doctor}/documents', [DoctorDocumentController::class, 'storeForDoctor'])->middleware('admin.privilege:doctors,edit')->name('doctors.documents.store');
         Route::post('doctors/{doctor}/send-mail', [DoctorController::class, 'sendMail'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-mail');
         Route::post('doctors/{doctor}/send-sms', [DoctorController::class, 'sendSms'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-sms');
@@ -66,6 +68,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('doctors/{doctor}/resend-receipt', [DoctorController::class, 'resendMoneyReceipt'])->middleware('admin.privilege:doctors,edit')->name('doctors.resend-receipt');
         Route::post('doctors/{doctor}/toggle-auto-email', [DoctorController::class, 'toggleAutoEmail'])->middleware('admin.privilege:doctors,edit')->name('doctors.toggle-auto-email');
         Route::post('doctors/{doctor}/toggle-auto-sms', [DoctorController::class, 'toggleAutoSms'])->middleware('admin.privilege:doctors,edit')->name('doctors.toggle-auto-sms');
+        Route::post('sensitive-access/otp/request', [SensitiveAccessOtpController::class, 'requestOtp'])->name('sensitive-otp.request');
+        Route::post('sensitive-access/otp/verify', [SensitiveAccessOtpController::class, 'verifyOtp'])->name('sensitive-otp.verify');
 
         // AJAX: location lookups
         Route::get('ajax/states/{countryId}', [EnrollmentController::class, 'getStates'])->middleware('admin.privilege:enrollment,edit')->name('ajax.states');
@@ -93,7 +97,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Money Receipts
         Route::get('receipts', [DoctorController::class, 'receipts'])->middleware('admin.privilege:receipts,view')->name('receipts');
         Route::get('receipts/csv-report', [DoctorController::class, 'receiptsCsv'])->middleware('admin.privilege:receipts,view')->name('receipts.csv-report');
-        Route::get('receipts/{receipt}/view', [DoctorController::class, 'receiptsView'])->middleware('admin.privilege:receipts,view')->name('receipts.view');
+        Route::get('receipts/{receipt}/view', [DoctorController::class, 'receiptsView'])->middleware(['admin.privilege:receipts,view', 'sensitive.otp:enrollment,receipt'])->name('receipts.view');
         Route::get('receipts/{receipt}/json', [DoctorController::class, 'receiptsShowJson'])->middleware('admin.privilege:receipts,view')->name('receipts.json');
         Route::get('receipts/{receipt}/edit', [DoctorController::class, 'receiptsEdit'])->middleware('admin.privilege:receipts,edit')->name('receipts.edit');
         Route::put('receipts/{receipt}', [DoctorController::class, 'receiptsUpdate'])->middleware('admin.privilege:receipts,edit')->name('receipts.update');
@@ -169,6 +173,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('index.php/manage_salary/edit_salary/{salaryRecord}', [SalaryController::class, 'show'])->middleware('admin.privilege:receipts,view')->name('manage-salary.legacy-edit');
         Route::get('index.php/manage_salary/salary_slip/{salaryRecord}', [SalaryController::class, 'slip'])->middleware('admin.privilege:receipts,view')->name('manage-salary.legacy-slip');
         Route::get('index.php/manage_salary/view_single_salary/{salaryRecord}', [SalaryController::class, 'show'])->middleware('admin.privilege:receipts,view')->name('manage-salary.legacy-view');
+        Route::get('office-expensions', [OfficeExpenseController::class, 'index'])->middleware('admin.privilege:receipts,view')->name('office-expensions.index');
+        Route::get('office-expensions/csv-report', [OfficeExpenseController::class, 'csvReport'])->middleware('admin.privilege:receipts,view')->name('office-expensions.csv');
+        Route::get('index.php/money_reciept/office_expensions', [OfficeExpenseController::class, 'index'])->middleware('admin.privilege:receipts,view')->name('office-expensions.legacy-index');
+        Route::get('index.php/money_reciept/office_expensions_csv', [OfficeExpenseController::class, 'csvReport'])->middleware('admin.privilege:receipts,view')->name('office-expensions.legacy-csv');
         Route::get('index.php/doctor_list/edit_doctor/{doctor}', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-edit');
         Route::get('index.php/renewal_list/renewal/{doctor}/{renewType?}', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-renewal');
         
