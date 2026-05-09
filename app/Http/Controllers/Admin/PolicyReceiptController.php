@@ -83,11 +83,26 @@ class PolicyReceiptController extends Controller
         return $this->create();
     }
 
+    public function storeForEnrollment(Request $request, Enrollment $enrollment)
+    {
+        $policy = $this->persistPolicyReceipt($request, $enrollment);
+
+        session()->flash('success', 'Policy received entry added.');
+
+        // Keep the enrollment workflow intact: return to step 3 preview where receipts are shown
+        return redirect()->route('admin.enrollment.step3', $enrollment);
+    }
+
     public function storeForDoctor(Request $request, $doctorId)
     {
-        $request->merge(['doctor' => $doctorId]);
+        $enrollment = Enrollment::findOrFail($doctorId);
 
-        return $this->store($request);
+        $policy = $this->persistPolicyReceipt($request, $enrollment);
+
+        session()->flash('success', 'Policy received entry added.');
+
+        // Return to enrollment step3 where the policy receipts are listed for this enrollment
+        return redirect()->route('admin.enrollment.step3', $enrollment);
     }
 
     public function store(Request $request)
@@ -97,32 +112,35 @@ class PolicyReceiptController extends Controller
             'doctor' => 'nullable|integer|exists:enrollments,id',
             'last_renewed_date' => 'nullable|date_format:d/m/Y',
             'rcv_date' => 'nullable|date_format:d/m/Y',
+            'policy_start_date' => 'nullable|date_format:d/m/Y',
+            'policy_end_date' => 'nullable|date_format:d/m/Y',
             'policy_file' => 'nullable|file|mimes:pdf,jpeg,png,jpg,doc,docx|max:10240',
         ]);
 
-        $enrollment = null;
-        $doctorName = null;
+        // If a doctor/enrollment was provided, reuse persistPolicyReceipt to keep logic consistent
         if (!empty($data['doctor'])) {
-            $enrollment = Enrollment::find($data['doctor']);
-            $doctorName = $enrollment?->doctor_name;
+            $enrollment = Enrollment::findOrFail($data['doctor']);
+            $this->persistPolicyReceipt($request, $enrollment);
+            session()->flash('success', 'Policy received entry added.');
+            return redirect()->route('admin.policy-receipt.index');
         }
 
+        // Otherwise create a standalone policy receipt (no enrollment link)
         $lastRenewed = null;
         if (!empty($data['last_renewed_date'])) {
-            try {
-                $lastRenewed = Carbon::createFromFormat('d/m/Y', $data['last_renewed_date'])->format('Y-m-d');
-            } catch (\Exception $e) {
-                $lastRenewed = null;
-            }
+            try { $lastRenewed = Carbon::createFromFormat('d/m/Y', $data['last_renewed_date'])->format('Y-m-d'); } catch (\Exception $e) { $lastRenewed = null; }
         }
-
         $receiveDate = null;
         if (!empty($data['rcv_date'])) {
-            try {
-                $receiveDate = Carbon::createFromFormat('d/m/Y', $data['rcv_date'])->format('Y-m-d');
-            } catch (\Exception $e) {
-                $receiveDate = null;
-            }
+            try { $receiveDate = Carbon::createFromFormat('d/m/Y', $data['rcv_date'])->format('Y-m-d'); } catch (\Exception $e) { $receiveDate = null; }
+        }
+        $policyStartDate = null;
+        if (!empty($data['policy_start_date'])) {
+            try { $policyStartDate = Carbon::createFromFormat('d/m/Y', $data['policy_start_date'])->format('Y-m-d'); } catch (\Exception $e) { $policyStartDate = null; }
+        }
+        $policyEndDate = null;
+        if (!empty($data['policy_end_date'])) {
+            try { $policyEndDate = Carbon::createFromFormat('d/m/Y', $data['policy_end_date'])->format('Y-m-d'); } catch (\Exception $e) { $policyEndDate = null; }
         }
 
         $filePath = null;
@@ -132,10 +150,12 @@ class PolicyReceiptController extends Controller
 
         PolicyReceipt::create([
             'policy_no' => $data['policy_no'] ?? null,
-            'enrollment_id' => $enrollment?->id,
-            'doctor_name' => $doctorName,
+            'enrollment_id' => null,
+            'doctor_name' => null,
             'last_renewed_date' => $lastRenewed,
             'receive_date' => $receiveDate,
+            'policy_start_date' => $policyStartDate,
+            'policy_end_date' => $policyEndDate,
             'policy_file' => $filePath,
         ]);
 
@@ -197,6 +217,19 @@ class PolicyReceiptController extends Controller
             'receive_date' => $receiveDate,
         ]);
 
+        // If linked to an enrollment, sync key dates back to the enrollment record
+        try {
+            if ($policy->enrollment) {
+                $policy->enrollment->policy_date = $receiveDate ?? $policy->enrollment->policy_date;
+                if (!empty($lastRenewed)) {
+                    $policy->enrollment->last_renewal_date = $lastRenewed;
+                }
+                $policy->enrollment->save();
+            }
+        } catch (\Exception $e) {
+            // ignore
+        }
+
         session()->flash('success', 'Policy received entry updated.');
         return redirect()->route('admin.policy-receipt.index');
     }
@@ -210,5 +243,63 @@ class PolicyReceiptController extends Controller
         $policy->delete();
         session()->flash('success', 'Policy received entry deleted.');
         return redirect()->route('admin.policy-receipt.index');
+    }
+
+    private function persistPolicyReceipt(Request $request, Enrollment $enrollment): PolicyReceipt
+    {
+        $data = $request->validate([
+            'policy_no' => 'nullable|string|max:255',
+            'last_renewed_date' => 'nullable|date_format:d/m/Y',
+            'rcv_date' => 'nullable|date_format:d/m/Y',
+            'policy_start_date' => 'nullable|date_format:d/m/Y',
+            'policy_end_date' => 'nullable|date_format:d/m/Y',
+            'policy_file' => 'nullable|file|mimes:pdf,jpeg,png,jpg,doc,docx|max:10240',
+        ]);
+
+        $lastRenewed = !empty($data['last_renewed_date'])
+            ? Carbon::createFromFormat('d/m/Y', $data['last_renewed_date'])->format('Y-m-d')
+            : null;
+
+        $receiveDate = !empty($data['rcv_date'])
+            ? Carbon::createFromFormat('d/m/Y', $data['rcv_date'])->format('Y-m-d')
+            : null;
+
+        $policyStartDate = !empty($data['policy_start_date'])
+            ? Carbon::createFromFormat('d/m/Y', $data['policy_start_date'])->format('Y-m-d')
+            : null;
+
+        $policyEndDate = !empty($data['policy_end_date'])
+            ? Carbon::createFromFormat('d/m/Y', $data['policy_end_date'])->format('Y-m-d')
+            : null;
+
+        $filePath = null;
+        if ($request->hasFile('policy_file')) {
+            $filePath = $request->file('policy_file')->store('policy_files', 'public');
+        }
+
+        $policy = PolicyReceipt::create([
+            'policy_no' => $data['policy_no'] ?? null,
+            'enrollment_id' => $enrollment->id,
+            'doctor_name' => $enrollment->doctor_name,
+            'last_renewed_date' => $lastRenewed,
+            'receive_date' => $receiveDate,
+            'policy_start_date' => $policyStartDate,
+            'policy_end_date' => $policyEndDate,
+            'policy_file' => $filePath,
+        ]);
+
+        // Synchronize important dates back to the enrollment so main listing shows up-to-date data.
+        // Use receive date first, then policy start date as fallback for `policy_date`.
+        try {
+            $enrollment->policy_date = $receiveDate ?? $policyStartDate ?? $enrollment->policy_date;
+            if (!empty($lastRenewed)) {
+                $enrollment->last_renewal_date = $lastRenewed;
+            }
+            $enrollment->save();
+        } catch (\Exception $e) {
+            // Do not break creation flow if enrollment update fails; log or ignore silently.
+        }
+
+        return $policy;
     }
 }

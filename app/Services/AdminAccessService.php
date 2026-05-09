@@ -7,10 +7,113 @@ use App\Models\AdminRole;
 use App\Models\User;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
 class AdminAccessService
 {
+    /**
+     * Find all sidebar access conflicts for given keys
+     * Returns array of all conflicts found
+     */
+    public function findAllSidebarAccessConflicts(array $selectedSidebarKeys, ?int $excludeUserId = null): array
+    {
+        $normalizedKeys = collect($selectedSidebarKeys)
+            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->unique()
+            ->values();
+
+        if ($normalizedKeys->isEmpty()) {
+            return [];
+        }
+
+        $query = AdminPrivilege::query()
+            ->with('user:id,name,first_name,last_name,phone')
+            ->where('group_key', 'sidebar')
+            ->where('is_allowed', true)
+            ->whereIn('page_key', $normalizedKeys->all());
+
+        if ($excludeUserId !== null) {
+            $query->where('user_id', '!=', $excludeUserId);
+        }
+
+        $conflicts = $query->get();
+        
+        return $conflicts->map(function ($conflict) {
+            $ownerName = trim((string) ($conflict->user?->name ?? ''));
+            if ($ownerName === '') {
+                $ownerName = trim((string) (($conflict->user?->first_name ?? '') . ' ' . ($conflict->user?->last_name ?? '')));
+            }
+            if ($ownerName === '') {
+                $ownerName = 'Unknown User';
+            }
+
+            return [
+                'permission_key' => (string) $conflict->page_key,
+                'menu_title' => (string) ($conflict->page_title ?: $conflict->page_key),
+                'owner_name' => $ownerName,
+                'owner_phone' => (string) ($conflict->user?->phone ?? ''),
+                'owner_user_id' => (int) $conflict->user_id,
+            ];
+        })->all();
+    }
+
+    /**
+     * Finds the FIRST sidebar access conflict
+     * Used for backward compatibility
+     */
+    public function firstSidebarAccessConflict(array $selectedSidebarKeys, ?int $excludeUserId = null): ?array
+    {
+        $conflicts = $this->findAllSidebarAccessConflicts($selectedSidebarKeys, $excludeUserId);
+        return empty($conflicts) ? null : $conflicts[0];
+    }
+
+    public function sidebarAccessOwnerName(string $permissionKey): string
+    {
+        return $this->sidebarAccessOwnerDetails($permissionKey)['name'];
+    }
+
+    public function sidebarAccessOwnerDetails(string $permissionKey): array
+    {
+        $owner = AdminPrivilege::query()
+            ->with('user:id,name,first_name,last_name,phone')
+            ->where('group_key', 'sidebar')
+            ->where('page_key', $permissionKey)
+            ->where('action_key', 'view')
+            ->where('is_allowed', true)
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if (!$owner) {
+            $superAdminPhone = User::query()
+                ->where('role', 'super_admin')
+                ->orWhereHas('roles', function ($query) {
+                    $query->where('role_key', 'super_admin');
+                })
+                ->value('phone');
+
+            return [
+                'name' => 'Super Admin',
+                'phone' => (string) ($superAdminPhone ?? ''),
+            ];
+        }
+
+        $ownerName = trim((string) ($owner->user?->name ?? ''));
+        if ($ownerName !== '') {
+            return [
+                'name' => $ownerName,
+                'phone' => (string) ($owner->user?->phone ?? ''),
+            ];
+        }
+
+        $fallbackName = trim((string) (($owner->user?->first_name ?? '') . ' ' . ($owner->user?->last_name ?? '')));
+
+        return [
+            'name' => $fallbackName !== '' ? $fallbackName : 'Super Admin',
+            'phone' => (string) ($owner->user?->phone ?? ''),
+        ];
+    }
+
     public function allowedAdminRoles(): array
     {
         $roleKeys = AdminRole::query()->pluck('role_key')->all();
@@ -120,6 +223,8 @@ class AdminAccessService
                     $privilege->forceFill(['is_allowed' => true])->save();
                 }
             }
+
+            $this->syncRoutePrivilegesForSidebarAssignments($user);
         });
     }
 
@@ -166,16 +271,53 @@ class AdminAccessService
     {
         $normalizedKeys = collect($selectedSidebarKeys)
             ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->unique()
             ->values();
 
         $this->syncSidebarCatalogForUser($user);
+        $this->syncPrivilegeCatalogForUser($user);
 
         DB::transaction(function () use ($user, $normalizedKeys): void {
+            // Before enabling any sidebar privileges, check for conflicts
+            $keysToEnable = $normalizedKeys->all();
+            if (!empty($keysToEnable)) {
+                // Get all sidebar permissions that would conflict
+                $conflictingPrivileges = AdminPrivilege::query()
+                    ->where('group_key', 'sidebar')
+                    ->where('is_allowed', true)
+                    ->whereIn('page_key', $keysToEnable)
+                    ->where('user_id', '!=', $user->id)
+                    ->with('user')
+                    ->get();
+
+                if ($conflictingPrivileges->isNotEmpty()) {
+                    $conflictDetails = $conflictingPrivileges->map(fn ($p) => 
+                        "'{$p->page_title}' assigned to " . ($p->user?->name ?? 'Unknown')
+                    )->implode(', ');
+                    
+                    throw new \Exception(
+                        "Cannot assign the following menu items as they are already assigned to other sub-admins: {$conflictDetails}. " .
+                        "Each sidebar menu can only be assigned to ONE sub-admin."
+                    );
+                }
+            }
+
+            // Sidebar selection is the source of truth for non-sidebar route access.
+            AdminPrivilege::query()
+                ->where('user_id', $user->id)
+                ->where('group_key', '!=', 'sidebar')
+                ->where('action_key', 'view')
+                ->update([
+                    'is_allowed' => false,
+                    'updated_at' => now(),
+                ]);
+
             AdminPrivilege::query()
                 ->where('user_id', $user->id)
                 ->where('group_key', 'sidebar')
                 ->update([
                     'is_allowed' => false,
+                    'sidebar_unique_marker' => null,
                     'updated_at' => now(),
                 ]);
 
@@ -189,8 +331,37 @@ class AdminAccessService
                 ->whereIn('page_key', $normalizedKeys->all())
                 ->update([
                     'is_allowed' => true,
+                    'sidebar_unique_marker' => DB::raw("CONCAT('sidebar:', page_key)"),
                     'updated_at' => now(),
                 ]);
+
+            // Also enable corresponding route-level page privileges when a sidebar node is granted.
+            $pageKeysToEnable = $this->resolvePageKeysFromSidebarPermissionKeys($normalizedKeys->all());
+            $pageActionsToEnable = $this->resolvePageActionKeysFromSidebarPermissionKeys($normalizedKeys->all());
+
+            // Disable all non-sidebar route permissions first
+            AdminPrivilege::query()
+                ->where('user_id', $user->id)
+                ->where('group_key', '!=', 'sidebar')
+                ->update([
+                    'is_allowed' => false,
+                    'updated_at' => now(),
+                ]);
+
+            // Then enable only the specific page_key + action_key combinations required by the sidebar permissions
+            if (!empty($pageActionsToEnable)) {
+                foreach ($pageActionsToEnable as $item) {
+                    AdminPrivilege::query()
+                        ->where('user_id', $user->id)
+                        ->where('page_key', $item['page_key'])
+                        ->where('action_key', $item['action_key'])
+                        ->where('group_key', '!=', 'sidebar')
+                        ->update([
+                            'is_allowed' => true,
+                            'updated_at' => now(),
+                        ]);
+                }
+            }
         });
     }
 
@@ -283,6 +454,8 @@ class AdminAccessService
                 'key' => (string) $node['key'],
                 'permission_key' => (string) ($node['permission_key'] ?? ('sidebar.' . $node['key'])),
                 'title' => (string) ($node['title'] ?? $node['key']),
+                'route' => $node['route'] ?? null,
+                'route_names' => array_values(array_filter(Arr::wrap($node['route_names'] ?? []))),
             ];
 
             foreach ($this->flattenSidebarCatalog($node['children'] ?? []) as $child) {
@@ -304,9 +477,8 @@ class AdminAccessService
 
             $permissionKey = (string) ($node['permission_key'] ?? ('sidebar.' . $node['key']));
             $isAllowed = isset($allowed[$permissionKey]);
-            $children = $isAllowed
-                ? ($node['children'] ?? [])
-                : $this->filterSidebarNodes($node['children'] ?? [], $allowed);
+            // Always recursively filter children to check individual permissions
+            $children = $this->filterSidebarNodes($node['children'] ?? [], $allowed);
 
             if (!$isAllowed && empty($children)) {
                 continue;
@@ -338,5 +510,242 @@ class AdminAccessService
         }
 
         return $normalized;
+    }
+
+    private function resolvePageKeysFromSidebarPermissionKeys(array $permissionKeys): array
+    {
+        $nodesByPermissionKey = [];
+
+        foreach ($this->flattenSidebarCatalog($this->sidebarCatalogForView()) as $node) {
+            $nodesByPermissionKey[(string) ($node['permission_key'] ?? '')] = $node;
+        }
+
+        $pageKeys = [];
+        $routePageKeyMap = $this->routeNameToPrivilegePageKeys();
+
+        foreach ($permissionKeys as $permissionKey) {
+            $node = $nodesByPermissionKey[(string) $permissionKey] ?? null;
+            if (!is_array($node)) {
+                continue;
+            }
+
+            $routeNamePatterns = collect($node['route_names'] ?? [])
+                ->merge([(string) ($node['route'] ?? '')])
+                ->filter(fn ($value) => is_string($value) && $value !== '')
+                ->unique()
+                ->values()
+                ->all();
+
+            foreach ($routeNamePatterns as $pattern) {
+                $hasWildcard = str_contains($pattern, '*');
+
+                if (!$hasWildcard && isset($routePageKeyMap[$pattern])) {
+                    $pageKeys = array_merge($pageKeys, $routePageKeyMap[$pattern]);
+                    continue;
+                }
+
+                foreach ($routePageKeyMap as $routeName => $keys) {
+                    if (Str::is($pattern, $routeName)) {
+                        $pageKeys = array_merge($pageKeys, $keys);
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($pageKeys)));
+    }
+
+    private function resolvePageActionKeysFromSidebarPermissionKeys(array $permissionKeys): array
+    {
+        $nodesByPermissionKey = [];
+
+        foreach ($this->flattenSidebarCatalog($this->sidebarCatalogForView()) as $node) {
+            $nodesByPermissionKey[(string) ($node['permission_key'] ?? '')] = $node;
+        }
+
+        $pageActions = [];
+        $routePageActionMap = $this->routeNameToPrivilegePageActions();
+
+        foreach ($permissionKeys as $permissionKey) {
+            $node = $nodesByPermissionKey[(string) $permissionKey] ?? null;
+            if (!is_array($node)) {
+                continue;
+            }
+
+            $routeNamePatterns = collect($node['route_names'] ?? [])
+                ->merge([(string) ($node['route'] ?? '')])
+                ->filter(fn ($value) => is_string($value) && $value !== '')
+                ->unique()
+                ->values()
+                ->all();
+
+            foreach ($routeNamePatterns as $pattern) {
+                $hasWildcard = str_contains($pattern, '*');
+
+                if (!$hasWildcard && isset($routePageActionMap[$pattern])) {
+                    $pageActions = array_merge($pageActions, $routePageActionMap[$pattern]);
+                    continue;
+                }
+
+                foreach ($routePageActionMap as $routeName => $actions) {
+                    if (Str::is($pattern, $routeName)) {
+                        $pageActions = array_merge($pageActions, $actions);
+                    }
+                }
+            }
+        }
+
+        $unique = [];
+        foreach ($pageActions as $item) {
+            $key = $item['page_key'] . ':' . $item['action_key'];
+            if (!isset($unique[$key])) {
+                $unique[$key] = $item;
+            }
+        }
+
+        return array_values($unique);
+    }
+
+    private function routeNameToPrivilegePageKeys(): array
+    {
+        $map = [];
+
+        foreach (Route::getRoutes() as $route) {
+            $routeName = $route->getName();
+            if (!is_string($routeName) || $routeName === '') {
+                continue;
+            }
+
+            foreach ($route->gatherMiddleware() as $middleware) {
+                if (!is_string($middleware) || !str_starts_with($middleware, 'admin.privilege:')) {
+                    continue;
+                }
+
+                $payload = substr($middleware, strlen('admin.privilege:'));
+                if (!is_string($payload) || $payload === '') {
+                    continue;
+                }
+
+                $parts = array_map('trim', explode(',', $payload));
+                $pageKey = $parts[0] ?? '';
+
+                if ($pageKey === '') {
+                    continue;
+                }
+
+                foreach ($this->routeNameAliases($routeName) as $routeNameAlias) {
+                    $map[$routeNameAlias] ??= [];
+                    $map[$routeNameAlias][] = $pageKey;
+                }
+            }
+        }
+
+        foreach ($map as $routeName => $pageKeys) {
+            $map[$routeName] = array_values(array_unique($pageKeys));
+        }
+
+        return $map;
+    }
+
+    private function routeNameToPrivilegePageActions(): array
+    {
+        $map = [];
+
+        foreach (Route::getRoutes() as $route) {
+            $routeName = $route->getName();
+            if (!is_string($routeName) || $routeName === '') {
+                continue;
+            }
+
+            foreach ($route->gatherMiddleware() as $middleware) {
+                if (!is_string($middleware) || !str_starts_with($middleware, 'admin.privilege:')) {
+                    continue;
+                }
+
+                $payload = substr($middleware, strlen('admin.privilege:'));
+                if (!is_string($payload) || $payload === '') {
+                    continue;
+                }
+
+                $parts = array_map('trim', explode(',', $payload));
+                $pageKey = $parts[0] ?? '';
+                $actionKey = $parts[1] ?? 'view';
+
+                if ($pageKey === '') {
+                    continue;
+                }
+
+                foreach ($this->routeNameAliases($routeName) as $routeNameAlias) {
+                    $map[$routeNameAlias] ??= [];
+                    $map[$routeNameAlias][] = ['page_key' => $pageKey, 'action_key' => $actionKey];
+                }
+            }
+        }
+
+        foreach ($map as $routeName => $items) {
+            $unique = [];
+            foreach ($items as $item) {
+                $key = $item['page_key'] . ':' . $item['action_key'];
+                if (!isset($unique[$key])) {
+                    $unique[$key] = $item;
+                }
+            }
+            $map[$routeName] = array_values($unique);
+        }
+
+        return $map;
+    }
+
+    private function routeNameAliases(string $routeName): array
+    {
+        $aliases = [$routeName];
+
+        if (Str::startsWith($routeName, 'admin.')) {
+            $aliases[] = substr($routeName, strlen('admin.'));
+        }
+
+        return array_values(array_unique(array_filter($aliases)));
+    }
+
+    private function syncRoutePrivilegesForSidebarAssignments(User $user): void
+    {
+        $allowedSidebarKeys = AdminPrivilege::query()
+            ->where('user_id', $user->id)
+            ->where('group_key', 'sidebar')
+            ->where('is_allowed', true)
+            ->pluck('page_key')
+            ->all();
+
+        if (empty($allowedSidebarKeys)) {
+            return;
+        }
+
+        $pageActionsToEnable = $this->resolvePageActionKeysFromSidebarPermissionKeys($allowedSidebarKeys);
+
+        if (empty($pageActionsToEnable)) {
+            return;
+        }
+
+        // Disable all non-sidebar route permissions first
+        AdminPrivilege::query()
+            ->where('user_id', $user->id)
+            ->where('group_key', '!=', 'sidebar')
+            ->update([
+                'is_allowed' => false,
+                'updated_at' => now(),
+            ]);
+
+        // Enable only the specific page_key + action_key combinations
+        foreach ($pageActionsToEnable as $item) {
+            AdminPrivilege::query()
+                ->where('user_id', $user->id)
+                ->where('page_key', $item['page_key'])
+                ->where('action_key', $item['action_key'])
+                ->where('group_key', '!=', 'sidebar')
+                ->update([
+                    'is_allowed' => true,
+                    'updated_at' => now(),
+                ]);
+        }
     }
 }

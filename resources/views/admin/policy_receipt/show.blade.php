@@ -13,6 +13,8 @@
         <div><strong>Policy No:</strong> {{ $policy->policy_no ?? '—' }}</div>
         <div><strong>Doctor:</strong> {{ $policy->doctor_name ?? ($policy->enrollment?->doctor_name ?? '—') }}</div>
         <div><strong>Last Renewed Date:</strong> {{ optional($policy->last_renewed_date)->format('d/m/Y') ?? '—' }}</div>
+        <div><strong>Policy Start Date:</strong> {{ optional($policy->policy_start_date)->format('d/m/Y') ?? '—' }}</div>
+        <div><strong>Policy End Date:</strong> {{ optional($policy->policy_end_date)->format('d/m/Y') ?? '—' }}</div>
         <div><strong>Receive Date:</strong> {{ optional($policy->receive_date)->format('d/m/Y') ?? '—' }}</div>
         <div>
             <strong>File:</strong>

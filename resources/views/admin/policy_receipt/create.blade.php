@@ -45,6 +45,20 @@
                 </div>
 
                 <div class="control-group" id="edit_discount_control">
+                    <label class="control-label">Policy Start Date</label>
+                    <div class="controls">
+                        <input type="text" id="policy_start_date" class="form-control datepicker" name="policy_start_date" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="control-group" id="edit_discount_control">
+                    <label class="control-label">Policy End Date</label>
+                    <div class="controls">
+                        <input type="text" id="policy_end_date" class="form-control datepicker" name="policy_end_date" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="control-group" id="edit_discount_control">
                     <label class="control-label">Received date</label>
                     <div class="controls">
                         <input type="text" id="rcv_date" class="form-control datepicker" name="rcv_date" autocomplete="off">

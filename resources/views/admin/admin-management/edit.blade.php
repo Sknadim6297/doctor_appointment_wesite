@@ -66,7 +66,7 @@
 
                 <div>
                     <label for="dob" class="mb-2 block text-sm font-medium text-gray-700">Date Of Birth</label>
-                    <input type="date" id="dob" name="dob" value="{{ old('dob', optional($admin->dob)->format('Y-m-d')) }}" class="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-indigo-500">
+                    <input type="text" id="dob" name="dob" value="{{ old('dob', optional($admin->dob)->format('d/m/Y')) }}" class="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-indigo-500 datepicker" autocomplete="off">
                     @error('dob')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
 
@@ -162,5 +162,15 @@ document.addEventListener('change', function (event) {
         childCheckbox.checked = checkbox.checked;
     });
 });
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    if (typeof flatpickr !== 'undefined') {
+        document.querySelectorAll('.datepicker').forEach(function (input) {
+            flatpickr(input, { dateFormat: 'd/m/Y' });
+        });
+    }
 </script>
 @endsection

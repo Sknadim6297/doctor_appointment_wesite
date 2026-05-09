@@ -9,25 +9,29 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Add columns if they don't exist
+        // Add action_key column if it doesn't exist
         if (!Schema::hasColumn('admin_privileges', 'action_key')) {
             Schema::table('admin_privileges', function (Blueprint $table) {
                 $table->string('action_key', 50)->default('view')->after('page_key');
+            });
+        }
+
+        // Add action_title column if it doesn't exist
+        if (!Schema::hasColumn('admin_privileges', 'action_title')) {
+            Schema::table('admin_privileges', function (Blueprint $table) {
                 $table->string('action_title', 100)->default('View')->after('page_title');
             });
         }
 
-        // Update all rows with default values if they're null
+        // Update NULL values with defaults
         DB::table('admin_privileges')
-            ->where(function ($q) {
-                $q->whereNull('action_key')->orWhere('action_key', '');
-            })
+            ->whereNull('action_key')
+            ->orWhere('action_key', '')
             ->update(['action_key' => 'view']);
 
         DB::table('admin_privileges')
-            ->where(function ($q) {
-                $q->whereNull('action_title')->orWhere('action_title', '');
-            })
+            ->whereNull('action_title')
+            ->orWhere('action_title', '')
             ->update(['action_title' => 'View']);
     }
 

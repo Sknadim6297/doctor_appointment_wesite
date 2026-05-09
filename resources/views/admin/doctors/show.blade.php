@@ -140,7 +140,18 @@
                     <div class="about-row"><b>Insurance Coverage</b><div>Rs. {{ number_format((float)($doctor->payment_amount ?? 0), 0) }}</div></div>
                     <div class="about-row"><b>Premium amount</b><div>Rs. {{ number_format((float)($doctor->service_amount ?? 0), 0) }}</div></div>
                     <div class="about-row"><b>Cheque Amount</b><div>Rs. {{ number_format((float)($doctor->total_amount ?? 0), 0) }}/-</div></div>
-                    <div class="about-row"><b>Next Renewal date</b><div>{{ $renewalDate->format('d/m/Y') }}</div></div>
+                    
+                    @if(!$doctor->last_renewal_date)
+                        <!-- New enrollment - show next renewal date only -->
+                        <div class="about-row"><b>Next Renewal date</b><div>{{ $renewalDate->format('d/m/Y') }}</div></div>
+                    @else
+                        <!-- Has been renewed - show last renewal date and renewal completion date -->
+                        <div class="about-row"><b>Last Renewal Date</b><div>{{ $doctor->last_renewal_date->format('d/m/Y') }}</div></div>
+                        @if($doctor->renewal_date)
+                            <div class="about-row"><b>Renewed On</b><div>{{ $doctor->renewal_date->format('d/m/Y') }} @if($doctor->last_renewal_date) (Completed: {{ $doctor->last_renewal_date->format('d/m/Y') }}) @endif</div></div>
+                        @endif
+                    @endif
+                    
                     <div class="about-row"><b>Policy Date</b><div>{{ optional($doctor->payment_cash_date)->format('d/m/Y') ?? 'N/A' }}</div></div>
                 </div>
             </div>
@@ -413,7 +424,7 @@
                             <tr>
                                 <th>SL No</th>
                                 <th>Doctor</th>
-                                <th>Renewal date</th>
+                                <th>Collection Date</th>
                                 <th>Premium amount</th>
                                 <th>Send date</th>
                                 <th>Action</th>

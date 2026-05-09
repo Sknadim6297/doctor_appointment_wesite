@@ -27,9 +27,73 @@
     </div>
 
     <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
+        {{-- Policy Received subform: submit first, then continue to post submission --}}
+        <form action="{{ route('admin.enrollment.policy-receipt.store', $enrollment) }}" method="post" enctype="multipart/form-data" id="policy_received_form" class="space-y-6 mb-6">
+            @csrf
+            <input type="hidden" name="doctor" value="{{ $enrollment->id }}">
+            <h3 class="text-lg font-semibold">Policy Received (Step 3a)</h3>
+            <div class="grid gap-5 md:grid-cols-2">
+                <div class="form-group">
+                    <label class="mb-2 block text-sm font-semibold text-slate-700">Policy No</label>
+                    <input type="text" name="policy_no" class="w-full rounded-xl border px-4 py-2" value="">
+                </div>
+                <div class="form-group">
+                    <label class="mb-2 block text-sm font-semibold text-slate-700">Last Renewed Date</label>
+                    <input type="text" name="last_renewed_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="mb-2 block text-sm font-semibold text-slate-700">Policy Start Date</label>
+                    <input type="text" name="policy_start_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="mb-2 block text-sm font-semibold text-slate-700">Policy End Date</label>
+                    <input type="text" name="policy_end_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="mb-2 block text-sm font-semibold text-slate-700">Received Date</label>
+                    <input type="text" name="rcv_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="mb-2 block text-sm font-semibold text-slate-700">Policy File</label>
+                    <input type="file" name="policy_file" class="block w-full">
+                </div>
+            </div>
+            <div class="flex justify-end">
+                <button type="submit" class="rounded-xl bg-green-600 px-4 py-2 text-white">Save Policy Received</button>
+            </div>
+        </form>
+
+        {{-- Show existing policy receipts for reference --}}
+        @if(!empty($policyReceipts) && $policyReceipts->count() > 0)
+            <div class="mb-6">
+                <h4 class="font-semibold">Policy Received History</h4>
+                <table class="w-full mt-2 table-auto text-sm">
+                    <thead>
+                        <tr>
+                            <th class="text-left">ID</th>
+                            <th class="text-left">Policy No</th>
+                            <th class="text-left">Receive Date</th>
+                            <th class="text-left">Files</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($policyReceipts as $pr)
+                            <tr>
+                                <td>{{ $pr->id }}</td>
+                                <td>{{ $pr->policy_no ?? '—' }}</td>
+                                <td>{{ optional($pr->receive_date)->format('d/m/Y') ?? '—' }}</td>
+                                <td>@if($pr->policy_file)<a href="{{ asset('storage/' . $pr->policy_file) }}" target="_blank">Download</a>@else — @endif</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
         <form action="{{ route('admin.posts.store') }}" method="post" enctype="multipart/form-data" id="post_upload_form" class="space-y-6">
             @csrf
             <input type="hidden" name="doctor" value="{{ $enrollment->id }}">
+            <input type="hidden" name="return_to" value="{{ route('admin.enrollment.success', $enrollment->id) }}">
 
             <div class="grid gap-5 md:grid-cols-2">
                 <div class="form-group">
@@ -92,7 +156,7 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
         if (typeof flatpickr !== 'undefined') {
-            document.querySelectorAll('#post_doc_date, #post_doc_recieved_date').forEach(function (input) {
+            document.querySelectorAll('#post_doc_date, #post_doc_recieved_date, .datepicker').forEach(function (input) {
                 flatpickr(input, { dateFormat: 'd/m/Y' });
             });
         }

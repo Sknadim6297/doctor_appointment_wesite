@@ -23,6 +23,8 @@ use App\Http\Controllers\Admin\SalaryController;
 use App\Http\Controllers\Admin\OfficeExpenseController;
 use App\Http\Controllers\Admin\SensitiveAccessOtpController;
 
+use App\Http\Controllers\Admin\RenewalController;
+
 Route::get('/', function () {
     return redirect()->route('admin.login');
 });
@@ -56,14 +58,26 @@ Route::prefix('admin')->name('admin.')->group(function () {
         
         // Enrollment Management
         Route::get('enrollment', [EnrollmentController::class, 'index'])->middleware('admin.privilege:enrollment,view')->name('enrollment');
-        Route::get('enrollment/create', [EnrollmentController::class, 'create'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.create');
-        Route::post('enrollment', [EnrollmentController::class, 'store'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.store');
+        // NEW ENROLLMENT ENTRY - Protected for assigned sub-admins only
+        Route::get('enrollment/create', [EnrollmentController::class, 'create'])
+            ->middleware(['admin.privilege:enrollment,edit', 'sub-admin.access-control:enrollment-entry'])
+            ->name('enrollment.create');
+        Route::post('enrollment', [EnrollmentController::class, 'store'])
+            ->middleware(['admin.privilege:enrollment,edit', 'sub-admin.access-control:enrollment-entry'])
+            ->name('enrollment.store');
         // Edit / Update enrollment (doctor)
         Route::get('enrollment/{enrollment}/edit', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.edit');
         Route::put('enrollment/{enrollment}', [EnrollmentController::class, 'update'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.update');
         Route::post('index.php/doctor_list/doctor_edit_action/{doctor}', [EnrollmentController::class, 'updateLegacy'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-update');
         Route::get('enrollment/{enrollment}/step-2', [EnrollmentController::class, 'stepTwo'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.step2');
         Route::get('enrollment/{enrollment}/step-3', [EnrollmentController::class, 'stepThree'])->middleware('admin.privilege:posts,edit')->name('enrollment.step3');
+        Route::get('enrollment/{enrollment}/success', [EnrollmentController::class, 'success'])->middleware('admin.privilege:enrollment,view')->name('enrollment.success');
+
+        // Approval workflow routes
+        Route::get('enrollments/pending', [EnrollmentController::class, 'pending'])->middleware('admin.privilege:enrollment,view')->name('enrollment.pending');
+        Route::get('enrollments/{id}/details', [EnrollmentController::class, 'showDetails'])->middleware('admin.privilege:enrollment,view')->name('enrollment.details');
+        Route::post('enrollments/{id}/approve', [EnrollmentController::class, 'approve'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.approve');
+        Route::post('enrollments/{id}/reject', [EnrollmentController::class, 'reject'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.reject');
 
         // Doctor Management
         Route::get('doctors', [DoctorController::class, 'index'])->middleware('admin.privilege:doctors,view')->name('doctors.index');
@@ -83,6 +97,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('sensitive-access/otp/request', [SensitiveAccessOtpController::class, 'requestOtp'])->name('sensitive-otp.request');
         Route::post('sensitive-access/otp/verify', [SensitiveAccessOtpController::class, 'verifyOtp'])->name('sensitive-otp.verify');
 
+            // Renewal Enrollment
+        Route::get('doctors/{doctor}/renewal', [RenewalController::class, 'show'])->middleware('admin.privilege:doctors,edit')->name('doctors.renewal');
+        Route::post('doctors/{doctor}/renewal', [RenewalController::class, 'store'])->middleware('admin.privilege:doctors,edit')->name('doctors.renewal-store');
+        // Legacy renewal enrollment URL pattern
+        Route::get('index.php/renewal_list/renewal/{doctor}/{type}', [RenewalController::class, 'show'])->middleware('admin.privilege:doctors,edit')->name('doctors.renewal.legacy');
+
         // AJAX: location lookups
         Route::get('ajax/states/{countryId}', [EnrollmentController::class, 'getStates'])->middleware('admin.privilege:enrollment,edit')->name('ajax.states');
         Route::get('ajax/cities/{stateId}', [EnrollmentController::class, 'getCities'])->middleware('admin.privilege:enrollment,edit')->name('ajax.cities');
@@ -93,6 +113,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('policy-receipt/create', [PolicyReceiptController::class, 'create'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.create');
         Route::get('index.php/premium_policy/add_policy_received/{doctor}', [PolicyReceiptController::class, 'createForDoctor'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.legacy-create');
         Route::post('policy-receipt', [PolicyReceiptController::class, 'store'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.store');
+        Route::post('enrollment/{enrollment}/policy-receipt', [PolicyReceiptController::class, 'storeForEnrollment'])->middleware('admin.privilege:posts,edit')->name('enrollment.policy-receipt.store');
         Route::post('index.php/premium_policy/submit_receive_from_page/{doctor}', [PolicyReceiptController::class, 'storeForDoctor'])->middleware('admin.privilege:policy_receipt,edit')->name('policy-receipt.legacy-store');
         Route::get('policy-receipt/doctors', [PolicyReceiptController::class, 'doctors'])->middleware('admin.privilege:policy_receipt,view')->name('policy-receipt.doctors');
         Route::get('policy-receipt/{id}', [PolicyReceiptController::class, 'show'])->middleware('admin.privilege:policy_receipt,view')->name('policy-receipt.show');

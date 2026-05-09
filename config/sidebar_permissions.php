@@ -36,6 +36,7 @@ return [
         'children' => [
             ['key' => 'enrollment-entry', 'title' => 'Enrollment Entry', 'icon' => 'ri-user-add-line', 'route' => 'admin.enrollment.create', 'route_names' => ['admin.enrollment.create']],
             ['key' => 'doctor-list', 'title' => 'Doctor List', 'icon' => 'ri-list-check-2', 'route' => 'admin.enrollment', 'route_names' => ['admin.enrollment', 'admin.enrollment.step2', 'admin.enrollment.step3', 'admin.enrollment.edit', 'admin.enrollment.legacy-update', 'admin.enrollment.legacy-edit', 'admin.enrollment.legacy-renewal']],
+            ['key' => 'pending-approvals', 'title' => 'All Pending Approvals', 'icon' => 'ri-time-line', 'route' => 'admin.enrollment.pending', 'route_names' => ['admin.enrollment.pending']],
             ['key' => 'incomplete-docs', 'title' => 'Incomplete Docs', 'icon' => 'ri-file-warning-line', 'route' => 'admin.doctors.incomplete-documents', 'route_names' => ['admin.doctors.incomplete-documents']],
             ['key' => 'membership-nos', 'title' => 'Membership nos.', 'icon' => 'ri-list-check-2', 'route' => 'admin.doctors.membership-nos', 'route_names' => ['admin.doctors.membership-nos', 'admin.doctors.membership-nos.legacy', 'admin.doctors.membership-search.legacy']],
         ],

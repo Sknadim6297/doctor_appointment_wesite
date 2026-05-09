@@ -12,17 +12,23 @@ class PolicyReceipt extends Model
         'doctor_name',
         'last_renewed_date',
         'receive_date',
+        'policy_start_date',
+        'policy_end_date',
         'policy_file',
     ];
 
     protected $dates = [
         'last_renewed_date',
         'receive_date',
+        'policy_start_date',
+        'policy_end_date',
     ];
 
     protected $casts = [
         'last_renewed_date' => 'date',
         'receive_date' => 'date',
+        'policy_start_date' => 'date',
+        'policy_end_date' => 'date',
     ];
 
     public function enrollment()

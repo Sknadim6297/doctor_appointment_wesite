@@ -200,6 +200,10 @@ class AdminManagementController extends Controller
             'sidebar_keys.*' => 'string',
         ]);
 
+        if ($conflictResponse = $this->denyIfSidebarAccessAlreadyAssigned($validated['sidebar_keys'] ?? [])) {
+            return $conflictResponse;
+        }
+
         $profilePicPath = null;
         if ($request->hasFile('profile_pic')) {
             $profilePicPath = $request->file('profile_pic')->store('profile-pics', 'public');
@@ -207,29 +211,37 @@ class AdminManagementController extends Controller
 
         $fullName = trim(($validated['first_name'] ?? '') . ' ' . ($validated['last_name'] ?? ''));
 
-        $user = User::create([
-            'name' => $fullName,
-            'first_name' => $validated['first_name'],
-            'last_name' => $validated['last_name'] ?? null,
-            'email' => $validated['email'],
-            'salary' => $validated['salary'] ?? null,
-            'employee_no' => $validated['employee_no'] ?? null,
-            'password' => Hash::make($validated['password']),
-            'phone' => $validated['phone'] ?? null,
-            'aadhaar_no' => $validated['aadhaar_no'] ?? null,
-            'pan_no' => $validated['pan_no'] ?? null,
-            'dob' => $validated['dob'] ?? null,
-            'profile_pic' => $profilePicPath,
-            'role' => $validated['role_keys'][0],
-            'is_active' => $validated['status'] === 'active',
-        ]);
+        try {
+            $user = User::create([
+                'name' => $fullName,
+                'first_name' => $validated['first_name'],
+                'last_name' => $validated['last_name'] ?? null,
+                'email' => $validated['email'],
+                'salary' => $validated['salary'] ?? null,
+                'employee_no' => $validated['employee_no'] ?? null,
+                'password' => Hash::make($validated['password']),
+                'phone' => $validated['phone'] ?? null,
+                'aadhaar_no' => $validated['aadhaar_no'] ?? null,
+                'pan_no' => $validated['pan_no'] ?? null,
+                'dob' => $validated['dob'] ?? null,
+                'profile_pic' => $profilePicPath,
+                'role' => $validated['role_keys'][0],
+                'is_active' => $validated['status'] === 'active',
+            ]);
 
-        $this->adminAccessService->syncRoles($user, $validated['role_keys']);
-        $this->adminAccessService->syncSidebarCatalogForUser($user);
-        $this->adminAccessService->syncSidebarPrivilegesFromSelection($user, $validated['sidebar_keys'] ?? []);
+            $this->adminAccessService->syncRoles($user, $validated['role_keys']);
+            $this->adminAccessService->syncSidebarCatalogForUser($user);
+            $this->adminAccessService->syncSidebarPrivilegesFromSelection($user, $validated['sidebar_keys'] ?? []);
 
-        return redirect()->route('admin.admin-management.index')
-            ->with('success', 'Sub admin created successfully!');
+            return redirect()->route('admin.admin-management.index')
+                ->with('success', 'Sub admin created successfully!');
+        } catch (\Exception $e) {
+            // Rollback user creation if permission assignment fails
+            if (isset($user)) {
+                $user->delete();
+            }
+            return back()->withErrors(['sidebar_keys' => 'Permission assignment failed: ' . $e->getMessage()])->withInput();
+        }
     }
 
     public function edit(User $admin)
@@ -278,6 +290,10 @@ class AdminManagementController extends Controller
             'sidebar_keys.*' => 'string',
         ]);
 
+        if ($conflictResponse = $this->denyIfSidebarAccessAlreadyAssigned($validated['sidebar_keys'] ?? [], (int) $admin->id)) {
+            return $conflictResponse;
+        }
+
         $profilePicPath = $admin->profile_pic;
         if ($request->hasFile('profile_pic')) {
             $profilePicPath = $request->file('profile_pic')->store('profile-pics', 'public');
@@ -285,28 +301,32 @@ class AdminManagementController extends Controller
 
         $fullName = trim(($validated['first_name'] ?? '') . ' ' . ($validated['last_name'] ?? ''));
 
-        $admin->update([
-            'name' => $fullName,
-            'first_name' => $validated['first_name'],
-            'last_name' => $validated['last_name'] ?? null,
-            'email' => $validated['email'],
-            'salary' => $validated['salary'] ?? null,
-            'employee_no' => $validated['employee_no'] ?? null,
-            'phone' => $validated['phone'] ?? null,
-            'aadhaar_no' => $validated['aadhaar_no'] ?? null,
-            'pan_no' => $validated['pan_no'] ?? null,
-            'dob' => $validated['dob'] ?? null,
-            'profile_pic' => $profilePicPath,
-            'role' => $validated['role_keys'][0],
-            'is_active' => $validated['status'] === 'active',
-        ]);
+        try {
+            $admin->update([
+                'name' => $fullName,
+                'first_name' => $validated['first_name'],
+                'last_name' => $validated['last_name'] ?? null,
+                'email' => $validated['email'],
+                'salary' => $validated['salary'] ?? null,
+                'employee_no' => $validated['employee_no'] ?? null,
+                'phone' => $validated['phone'] ?? null,
+                'aadhaar_no' => $validated['aadhaar_no'] ?? null,
+                'pan_no' => $validated['pan_no'] ?? null,
+                'dob' => $validated['dob'] ?? null,
+                'profile_pic' => $profilePicPath,
+                'role' => $validated['role_keys'][0],
+                'is_active' => $validated['status'] === 'active',
+            ]);
 
-        $this->adminAccessService->syncRoles($admin, $validated['role_keys']);
-        $this->adminAccessService->syncSidebarCatalogForUser($admin);
-        $this->adminAccessService->syncSidebarPrivilegesFromSelection($admin, $validated['sidebar_keys'] ?? []);
+            $this->adminAccessService->syncRoles($admin, $validated['role_keys']);
+            $this->adminAccessService->syncSidebarCatalogForUser($admin);
+            $this->adminAccessService->syncSidebarPrivilegesFromSelection($admin, $validated['sidebar_keys'] ?? []);
 
-        return redirect()->route('admin.admin-management.index')
-            ->with('success', 'Sub admin updated successfully!');
+            return redirect()->route('admin.admin-management.index')
+                ->with('success', 'Sub admin updated successfully!');
+        } catch (\Exception $e) {
+            return back()->withErrors(['sidebar_keys' => 'Permission assignment failed: ' . $e->getMessage()])->withInput();
+        }
     }
 
     public function resetPassword(Request $request, User $admin)
@@ -384,20 +404,43 @@ class AdminManagementController extends Controller
 
         $isAllowed = $validated['action'] === 'allow';
 
+        if ($isAllowed && ($conflictResponse = $this->denyIfSidebarAccessAlreadyAssigned($validated['sidebar_keys'], (int) $admin->id))) {
+            return $conflictResponse;
+        }
+
         $this->adminAccessService->syncSidebarCatalogForUser($admin);
 
-        AdminPrivilege::query()
-            ->where('user_id', $admin->id)
-            ->where('group_key', 'sidebar')
-            ->whereIn('page_key', $validated['sidebar_keys'])
-            ->update([
-                'is_allowed' => $isAllowed,
-                'updated_at' => now(),
-            ]);
+        try {
+            if ($isAllowed) {
+                // When enabling, set the unique marker for sidebar privileges
+                AdminPrivilege::query()
+                    ->where('user_id', $admin->id)
+                    ->where('group_key', 'sidebar')
+                    ->whereIn('page_key', $validated['sidebar_keys'])
+                    ->update([
+                        'is_allowed' => true,
+                        'sidebar_unique_marker' => \Illuminate\Support\Facades\DB::raw("CONCAT('sidebar:', page_key)"),
+                        'updated_at' => now(),
+                    ]);
+            } else {
+                // When disabling, remove the marker
+                AdminPrivilege::query()
+                    ->where('user_id', $admin->id)
+                    ->where('group_key', 'sidebar')
+                    ->whereIn('page_key', $validated['sidebar_keys'])
+                    ->update([
+                        'is_allowed' => false,
+                        'sidebar_unique_marker' => null,
+                        'updated_at' => now(),
+                    ]);
+            }
 
-        return redirect()
-            ->route('admin.admin-management.privileges', $admin)
-            ->with('success', $isAllowed ? 'Selected privileges allowed successfully.' : 'Selected privileges disallowed successfully.');
+            return redirect()
+                ->route('admin.admin-management.privileges', $admin)
+                ->with('success', $isAllowed ? 'Selected privileges allowed successfully.' : 'Selected privileges disallowed successfully.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to update privileges: ' . $e->getMessage()]);
+        }
     }
 
     public function loginLog(User $admin)
@@ -439,6 +482,31 @@ class AdminManagementController extends Controller
         }
 
         return null;
+    }
+
+    private function denyIfSidebarAccessAlreadyAssigned(array $sidebarKeys, ?int $excludeUserId = null): ?RedirectResponse
+    {
+        if (empty($sidebarKeys)) {
+            return null;
+        }
+
+        // Get all conflicts (not just the first)
+        $conflicts = $this->adminAccessService->findAllSidebarAccessConflicts($sidebarKeys, $excludeUserId);
+
+        if (empty($conflicts)) {
+            return null;
+        }
+
+        // Build detailed error message
+        $conflictList = collect($conflicts)->map(function ($conflict) {
+            $phone = $conflict['owner_phone'] ? ' (' . $conflict['owner_phone'] . ')' : '';
+            return "• {$conflict['menu_title']} → {$conflict['owner_name']}{$phone}";
+        })->implode("\n");
+
+        $message = "Cannot assign the following menu items. They are already assigned to other sub-admins:\n\n{$conflictList}\n\n" .
+                   "Each sidebar menu can only be assigned to ONE sub-admin at a time.";
+
+        return back()->withErrors(['sidebar_keys' => $message])->withInput();
     }
 }
 

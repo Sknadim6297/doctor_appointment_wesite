@@ -58,6 +58,12 @@ class AdminAuthController extends Controller
 
             $this->adminAccessService->syncPrivilegeCatalogForUser($user);
             $this->adminAccessService->syncSidebarCatalogForUser($user);
+            $selectedSidebarKeys = $user->privileges()
+                ->where('group_key', 'sidebar')
+                ->where('is_allowed', true)
+                ->pluck('page_key')
+                ->all();
+            $this->adminAccessService->syncSidebarPrivilegesFromSelection($user, $selectedSidebarKeys);
             $context = $this->clientContextService->fromRequest($request);
 
             AdminLoginLog::create([

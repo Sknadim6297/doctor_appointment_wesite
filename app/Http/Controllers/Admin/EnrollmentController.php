@@ -9,6 +9,7 @@ use App\Models\HighRiskPlan;
 use App\Models\InsurancePlan;
 use App\Models\NormalPlan;
 use App\Models\Specialization;
+use App\Services\AdminAccessService;
 use App\Services\ActivityLogService;
 use App\Services\LocationService;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +19,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EnrollmentController extends Controller
 {
-    public function __construct(private readonly ActivityLogService $activityLogService)
+    public function __construct(
+        private readonly ActivityLogService $activityLogService,
+        private readonly AdminAccessService $adminAccessService,
+    )
     {
     }
 
@@ -218,6 +222,10 @@ class EnrollmentController extends Controller
 
         $currentYear = (int) date('Y');
         $years = range($currentYear, 1950);
+        $officeUseAgent = $this->adminAccessService->sidebarAccessOwnerDetails('sidebar.doctor-management.enrollment-entry');
+        $officeUseAgentName = $officeUseAgent['name'] ?? 'Super Admin';
+        $officeUseAgentPhone = $officeUseAgent['phone'] ?? '';
+        $generatedCustomerId = old('customer_id_no', $this->generateCustomerId());
 
         return view('admin.enrollment.create', compact(
             'specializations',
@@ -227,7 +235,10 @@ class EnrollmentController extends Controller
             'years',
             'defaultCountryId',
             'defaultStateId',
-            'defaultCityId'
+            'defaultCityId',
+            'officeUseAgentName',
+            'officeUseAgentPhone',
+            'generatedCustomerId'
         ));
     }
 
@@ -248,7 +259,7 @@ class EnrollmentController extends Controller
             'city_name'              => 'nullable|string|max:100',
             'postcode'               => 'nullable|string|max:20',
             'mobile1'                => 'nullable|string|max:20',
-            'mobile2'                => 'nullable|string|max:20',
+            'mobile2'                => 'required|string|max:20',
             'doctor_email'           => 'nullable|email|max:200',
             'dob'                    => 'nullable|date',
             'qualification'          => 'nullable|string|max:200',
@@ -257,8 +268,8 @@ class EnrollmentController extends Controller
             'medical_registration_no'=> 'nullable|string|max:100',
             'year_of_reg'            => 'nullable|integer',
             'clinic_address'         => 'nullable|string|max:500',
-            'aadhar_card_no'         => 'nullable|string|max:20',
-            'pan_card_no'            => 'nullable|string|max:20',
+            'aadhar_card_no'         => 'required|string|max:20',
+            'pan_card_no'            => 'required|string|max:20',
             'specialization_id'      => 'nullable|integer|exists:specializations,id',
             'payment_mode'           => 'nullable|string|max:50',
             'plan'                   => 'nullable|integer|in:1,2,3',
@@ -279,6 +290,16 @@ class EnrollmentController extends Controller
         $validated['bond_to_mail'] = isset($validated['bond_to_mail']) && $validated['bond_to_mail'] === 'Y';
         $validated['created_by']   = Auth::id();
 
+        // Auto-generate customer_id_no if not provided
+        if (empty($validated['customer_id_no'])) {
+            $validated['customer_id_no'] = $this->generateCustomerId();
+        }
+
+        // Auto-fill agent_name from logged-in user if not provided
+        if (empty($validated['agent_name'])) {
+            $validated['agent_name'] = Auth::user()->name ?? '';
+        }
+
         // Resolve city_name / state_name from IDs if not supplied
         if (empty($validated['country_name']) && !empty($validated['country'])) {
             $countries = LocationService::countries();
@@ -293,7 +314,23 @@ class EnrollmentController extends Controller
             $validated['city_name'] = $cities[(int) $validated['city']] ?? null;
         }
 
+        // set agent_id and created_by_role for tracking
+        $validated['agent_id'] = Auth::id();
+        $validated['created_by_role'] = $this->getUserRoleKey(Auth::user());
+
         $enrollment = Enrollment::create($validated);
+
+        // If created by an agent, and the role is 'agent', mark as pending
+        if (($validated['created_by_role'] ?? '') === 'agent') {
+            $enrollment->status = 'pending';
+            $enrollment->save();
+        } else {
+            // Created by super admin -> auto-approve
+            $enrollment->status = 'approved';
+            $enrollment->approved_by = Auth::id();
+            $enrollment->approved_at = now();
+            $enrollment->save();
+        }
 
         if ($enrollment) {
             $this->activityLogService->log(
@@ -308,6 +345,13 @@ class EnrollmentController extends Controller
                     'membership_no' => $enrollment->customer_id_no,
                 ]
             );
+        }
+
+        // Redirect based on status / creator role
+        if ($enrollment->status === 'pending') {
+            return redirect()
+                ->route('admin.enrollment')
+                ->with('success', 'Sent for approval.');
         }
 
         return redirect()
@@ -334,6 +378,9 @@ class EnrollmentController extends Controller
 
         $currentYear = (int) date('Y');
         $years = range($currentYear, 1950);
+        $officeUseAgent = $this->adminAccessService->sidebarAccessOwnerDetails('sidebar.doctor-management.enrollment-entry');
+        $officeUseAgentName = $officeUseAgent['name'] ?? 'Super Admin';
+        $officeUseAgentPhone = $officeUseAgent['phone'] ?? '';
 
         return view('admin.enrollment.create', compact(
             'specializations',
@@ -343,7 +390,9 @@ class EnrollmentController extends Controller
             'years',
             'defaultCountryId',
             'defaultStateId',
-            'defaultCityId'
+            'defaultCityId',
+            'officeUseAgentName',
+            'officeUseAgentPhone'
         ))->with([
             'enrollment' => $enrollment,
             'submitRoute' => request()->routeIs('admin.enrollment.legacy-edit')
@@ -374,7 +423,7 @@ class EnrollmentController extends Controller
             'city_name'              => 'nullable|string|max:100',
             'postcode'               => 'nullable|string|max:20',
             'mobile1'                => 'nullable|string|max:20',
-            'mobile2'                => 'nullable|string|max:20',
+            'mobile2'                => 'required|string|max:20',
             'doctor_email'           => 'nullable|email|max:200',
             'dob'                    => 'nullable|date',
             'qualification'          => 'nullable|string|max:200',
@@ -383,8 +432,8 @@ class EnrollmentController extends Controller
             'medical_registration_no'=> 'nullable|string|max:100',
             'year_of_reg'            => 'nullable|integer',
             'clinic_address'         => 'nullable|string|max:500',
-            'aadhar_card_no'         => 'nullable|string|max:20',
-            'pan_card_no'            => 'nullable|string|max:20',
+            'aadhar_card_no'         => 'required|string|max:20',
+            'pan_card_no'            => 'required|string|max:20',
             'specialization_id'      => 'nullable|integer|exists:specializations,id',
             'payment_mode'           => 'nullable|string|max:50',
             'plan'                   => 'nullable|integer|in:1,2,3',
@@ -408,19 +457,117 @@ class EnrollmentController extends Controller
         return redirect()->route('admin.enrollment')->with('success', 'Enrollment updated successfully.');
     }
 
+    /**
+     * Approve the enrollment (used by admins)
+     */
+    public function approve(Request $request, $id)
+    {
+        $enrollment = Enrollment::findOrFail($id);
+        $enrollment->status = 'approved';
+        $enrollment->approved_by = Auth::id();
+        $enrollment->approved_at = now();
+        $enrollment->save();
+
+        return redirect()->route('admin.enrollment.pending')->with('success', 'Enrollment approved.');
+    }
+
+    /**
+     * Reject the enrollment with a reason
+     */
+    public function reject(Request $request, $id)
+    {
+        $request->validate(['rejection_reason' => 'nullable|string|max:2000']);
+
+        $enrollment = Enrollment::findOrFail($id);
+        $enrollment->status = 'rejected';
+        $enrollment->rejection_reason = $request->input('rejection_reason');
+        $enrollment->save();
+
+        return redirect()->route('admin.enrollment.pending')->with('success', 'Enrollment rejected.');
+    }
+
+    /**
+     * Return list of pending enrollments for admin
+     */
+    public function pending()
+    {
+        $this->activityLogService->log(request(), 'enrollment', 'view_pending', description: 'Viewed pending approvals list.');
+
+        $enrollments = Enrollment::where('status', 'pending')->orderByDesc('id')->paginate(25);
+
+        return view('admin.enrollment.pending', compact('enrollments'));
+    }
+
+    /**
+     * Show read-only details for a pending record
+     */
+    public function showDetails($id)
+    {
+        $enrollment = Enrollment::query()
+            ->with('specialization')
+            ->findOrFail($id);
+
+        return view('admin.enrollment.details', compact('enrollment'));
+    }
+
+    private function getUserRoleKey($user): string
+    {
+        // Basic mapping: if user has admin role or role string contains 'admin' treat as super_admin
+        if (method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin')) {
+            return 'super_admin';
+        }
+
+        if (!empty($user->role) && str_contains(strtolower($user->role), 'admin')) {
+            return 'super_admin';
+        }
+
+        return 'agent';
+    }
+
     public function updateLegacy(Request $request, $id)
     {
         return $this->update($request, $id);
     }
 
+    /**
+     * Generate a unique customer ID for a new enrollment.
+     * Format: IND-YYYYMMDD-MMMSS-XXXX where MMMSS is milliseconds and XXXX is random
+     */
+    private function generateCustomerId(): string
+    {
+        $date = now()->format('Ymd');
+        $microtime = str_pad((int)(microtime(true) * 10000) % 100000, 5, '0', STR_PAD_LEFT);
+        $random = str_pad(rand(1000, 9999), 4, '0', STR_PAD_LEFT);
+        return "IND-{$date}-{$microtime}-{$random}";
+    }
+
     public function stepTwo(Enrollment $enrollment)
     {
+        // Show preview only when approved or created by super admin
+        $isCreatedBySuper = ($enrollment->created_by_role ?? '') === 'super_admin';
+        if ($enrollment->status !== 'approved' && !$isCreatedBySuper) {
+            return redirect()->route('admin.enrollment')->with('info', 'Preview will be available after approval');
+        }
+
         return view('admin.enrollment.step2', compact('enrollment'));
     }
 
     public function stepThree(Enrollment $enrollment)
     {
-        return view('admin.enrollment.step3', compact('enrollment'));
+        $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
+            ->orderByDesc('id')
+            ->get();
+
+        return view('admin.enrollment.step3', compact('enrollment', 'policyReceipts'));
+    }
+
+    public function success(Enrollment $enrollment)
+    {
+        $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
+            ->orderByDesc('id')
+            ->get();
+
+        return view('admin.enrollment.success', compact('enrollment', 'policyReceipts'));
     }
 
     // ──────────────────────────── AJAX endpoints ─────────────────────────────

@@ -37,6 +37,7 @@ class Enrollment extends Model
         'plan',
         'plan_name',
         'coverage_id',
+        'coverage',
         'service_amount',
         'payment_amount',
         'total_amount',
@@ -46,17 +47,30 @@ class Enrollment extends Model
         'payment_branch_name',
         'payment_upi_transaction_id',
         'payment_cash_date',
+        'renewal_date',
+        'policy_date',
+        'last_renewal_date',
         'bond_to_mail',
         'auto_sms_enabled',
         'hide_from_call_sheet',
         'call_sheet_specialization_ids',
         'created_by',
+        'status',
+        'agent_id',
+        'created_by_role',
+        'approved_by',
+        'approved_at',
+        'rejection_reason',
     ];
 
     protected $casts = [
         'qualification_year' => 'array',
         'dob'                => 'date',
         'payment_cash_date'  => 'date',
+        'renewal_date'       => 'date',
+        'policy_date'        => 'date',
+        'last_renewal_date'  => 'date',
+        'approved_at'        => 'datetime',
         'bond_to_mail'       => 'boolean',
         'auto_sms_enabled'   => 'boolean',
         'hide_from_call_sheet' => 'boolean',
@@ -64,6 +78,7 @@ class Enrollment extends Model
         'service_amount'     => 'decimal:2',
         'payment_amount'     => 'decimal:2',
         'total_amount'       => 'decimal:2',
+        'coverage'           => 'decimal:2',
     ];
 
     public function specialization()
@@ -74,5 +89,20 @@ class Enrollment extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'agent_id');
+    }
+
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function policyReceipts()
+    {
+        return $this->hasMany(\App\Models\PolicyReceipt::class, 'enrollment_id');
     }
 }

@@ -196,7 +196,7 @@ class DoctorController extends Controller
                 'GST',
                 'Commission',
                 'Total Amount',
-                'Renewal Date',
+                'Collection Date',
             ]);
 
             $slNo = 1;
@@ -413,7 +413,7 @@ class DoctorController extends Controller
             $file = fopen('php://output', 'w');
             fputcsv($file, [
                 'SL', 'Name', 'Email', 'Phone', 'Specialization', 'Plan',
-                'Membership No', 'Insurance Coverage', 'Premium', 'Renewal Date'
+                'Membership No', 'Insurance Coverage', 'Premium', 'Collection Date'
             ]);
 
             $counter = 1;
