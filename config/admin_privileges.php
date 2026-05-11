@@ -4,7 +4,7 @@ return [
     'back_office_management' => [
         'title' => 'BACK OFFICE MANAGEMENT',
         'pages' => [
-            ['key' => 'enrollment', 'title' => 'Enrollment Records'],
+            ['key' => 'enrollment', 'title' => 'Enrollment Records', 'actions' => ['view', 'edit', 'delete', 'approve', 'reject']],
             ['key' => 'doctors', 'title' => 'Doctor Records'],
             ['key' => 'reports', 'title' => 'Reports'],
         ],

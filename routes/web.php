@@ -51,6 +51,81 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
     // Authenticated admin routes
     Route::middleware('admin')->group(function () {
+        // Temporary debug endpoints to inspect auth/permission state for troubleshooting
+        Route::get('debug/user-state', function () {
+            $user = request()->user() ?? \Illuminate\Support\Facades\Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'Not logged in']);
+            }
+
+            $allRoleKeys = [];
+            if (!empty($user->role)) {
+                $allRoleKeys[] = $user->role;
+            }
+            foreach ($user->roles as $role) {
+                $allRoleKeys[] = $role->role_key;
+            }
+            $allRoleKeys = array_values(array_unique($allRoleKeys));
+
+            return response()->json([
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role_field' => $user->role ?? null,
+                'is_active' => $user->is_active,
+                'all_role_keys' => $allRoleKeys,
+                'has_super_admin' => in_array('super_admin', $allRoleKeys, true),
+            ]);
+        })->name('admin.debug.user-state');
+
+        Route::get('debug/permissions', function () {
+            $user = request()->user() ?? \Illuminate\Support\Facades\Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'Not logged in']);
+            }
+
+            $privileges = \App\Models\AdminPrivilege::where('user_id', $user->id)->get();
+
+            return response()->json([
+                'user_id' => $user->id,
+                'total_permissions' => $privileges->count(),
+                'permissions' => $privileges->map(fn($p) => [
+                    'page_key' => $p->page_key,
+                    'action_key' => $p->action_key,
+                    'is_allowed' => $p->is_allowed,
+                ])->all(),
+            ]);
+        })->name('admin.debug.permissions');
+
+        Route::get('debug/pending-access', function () {
+            $user = request()->user() ?? \Illuminate\Support\Facades\Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'Not logged in']);
+            }
+
+            $allRoleKeys = [];
+            if (!empty($user->role)) {
+                $allRoleKeys[] = $user->role;
+            }
+            foreach ($user->roles as $role) {
+                $allRoleKeys[] = $role->role_key;
+            }
+            $allRoleKeys = array_values(array_unique($allRoleKeys));
+
+            $hasEnrollmentApprove = \App\Models\AdminPrivilege::where('user_id', $user->id)
+                ->where('page_key', 'enrollment')
+                ->where('action_key', 'approve')
+                ->where('is_allowed', true)
+                ->exists();
+
+            return response()->json([
+                'user_id' => $user->id,
+                'role_field' => $user->role,
+                'has_super_admin_role' => in_array('super_admin', $allRoleKeys, true),
+                'has_enrollment_approve_permission' => $hasEnrollmentApprove,
+            ]);
+        })->name('admin.debug.pending-access');
+
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         
         // Dashboard
@@ -58,6 +133,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         
         // Enrollment Management
         Route::get('enrollment', [EnrollmentController::class, 'index'])->middleware('admin.privilege:enrollment,view')->name('enrollment');
+        // Employee-only enrollment tracking page
+        Route::get('my-enrollments', [EnrollmentController::class, 'myEnrollments'])->middleware('admin.privilege:enrollment,view')->name('my-enrollments.index');
+        Route::get('my-enrollments/{id}', [EnrollmentController::class, 'myEnrollmentDetails'])->middleware('admin.privilege:enrollment,view')->name('my-enrollments.show');
         // NEW ENROLLMENT ENTRY - Protected for assigned sub-admins only
         Route::get('enrollment/create', [EnrollmentController::class, 'create'])
             ->middleware(['admin.privilege:enrollment,edit', 'sub-admin.access-control:enrollment-entry'])
@@ -73,11 +151,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('enrollment/{enrollment}/step-3', [EnrollmentController::class, 'stepThree'])->middleware('admin.privilege:posts,edit')->name('enrollment.step3');
         Route::get('enrollment/{enrollment}/success', [EnrollmentController::class, 'success'])->middleware('admin.privilege:enrollment,view')->name('enrollment.success');
 
-        // Approval workflow routes
-        Route::get('enrollments/pending', [EnrollmentController::class, 'pending'])->middleware('admin.privilege:enrollment,view')->name('enrollment.pending');
-        Route::get('enrollments/{id}/details', [EnrollmentController::class, 'showDetails'])->middleware('admin.privilege:enrollment,view')->name('enrollment.details');
-        Route::post('enrollments/{id}/approve', [EnrollmentController::class, 'approve'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.approve');
-        Route::post('enrollments/{id}/reject', [EnrollmentController::class, 'reject'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.reject');
+        // Approval workflow routes - use permission middleware instead of hardcoded super_admin role
+        Route::middleware('admin.privilege:enrollment,approve')->group(function () {
+            Route::get('enrollments/pending', [EnrollmentController::class, 'pending'])->name('enrollment.pending');
+            Route::post('enrollments/{id}/approve', [EnrollmentController::class, 'approve'])->name('enrollment.approve');
+            Route::post('enrollments/{id}/reject', [EnrollmentController::class, 'reject'])->name('enrollment.reject');
+        });
+        Route::get('enrollments/{id}/details', [EnrollmentController::class, 'showDetails'])->name('enrollment.details');
 
         // Doctor Management
         Route::get('doctors', [DoctorController::class, 'index'])->middleware('admin.privilege:doctors,view')->name('doctors.index');
@@ -301,4 +381,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         });
     });
 });
+
+// Debug routes for permission inspection and testing
+require __DIR__ . '/admin-debug.php';
 

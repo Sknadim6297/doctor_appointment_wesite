@@ -325,15 +325,17 @@ class AdminAccessService
                 return;
             }
 
-            AdminPrivilege::query()
-                ->where('user_id', $user->id)
-                ->where('group_key', 'sidebar')
-                ->whereIn('page_key', $normalizedKeys->all())
-                ->update([
-                    'is_allowed' => true,
-                    'sidebar_unique_marker' => DB::raw("CONCAT('sidebar:', page_key)"),
-                    'updated_at' => now(),
-                ]);
+            foreach ($normalizedKeys as $permissionKey) {
+                AdminPrivilege::query()
+                    ->where('user_id', $user->id)
+                    ->where('group_key', 'sidebar')
+                    ->where('page_key', $permissionKey)
+                    ->update([
+                        'is_allowed' => true,
+                        'sidebar_unique_marker' => 'sidebar:' . $permissionKey,
+                        'updated_at' => now(),
+                    ]);
+            }
 
             // Also enable corresponding route-level page privileges when a sidebar node is granted.
             $pageKeysToEnable = $this->resolvePageKeysFromSidebarPermissionKeys($normalizedKeys->all());
@@ -433,7 +435,11 @@ class AdminAccessService
         $catalog = $this->sidebarCatalogForView();
         $allowed = array_flip($this->allowedSidebarKeysForUser($user));
 
-        return $this->filterSidebarNodes($catalog, $allowed);
+        $visibleCatalog = $this->filterSidebarNodes($catalog, $allowed);
+
+        $visibleCatalog = $this->applySidebarLabelOverridesForUser($visibleCatalog, $user);
+
+        return $this->pruneEmployeeSidebarNodes($visibleCatalog, $user);
     }
 
     private function defaultActions(): array
@@ -510,6 +516,80 @@ class AdminAccessService
         }
 
         return $normalized;
+    }
+
+    private function applySidebarLabelOverridesForUser(array $nodes, User $user): array
+    {
+        $isAdminUser = in_array(($user->role ?? null), ['admin', 'super_admin'], true)
+            || (method_exists($user, 'hasAdminRole') && $user->hasAdminRole(['admin', 'super_admin']));
+
+        if ($isAdminUser) {
+            return $nodes;
+        }
+
+        $nodes = $this->renameSidebarNodeTitle($nodes, 'doctor-list', 'My Enrollments');
+        $nodes = $this->rewriteSidebarNodeRoute($nodes, 'doctor-list', 'admin.my-enrollments.index', ['admin.my-enrollments.index', 'admin.my-enrollments.show']);
+
+        return $nodes;
+    }
+
+    private function pruneEmployeeSidebarNodes(array $nodes, User $user): array
+    {
+        $isAdminUser = in_array(($user->role ?? null), ['admin', 'super_admin'], true)
+            || (method_exists($user, 'hasAdminRole') && $user->hasAdminRole(['admin', 'super_admin']));
+
+        if ($isAdminUser) {
+            return $nodes;
+        }
+
+        return array_values(array_filter(array_map(function (array $node) use ($user): ?array {
+            if (($node['key'] ?? null) === 'doctor-management') {
+                $node['children'] = array_values(array_filter(array_map(function (array $child): ?array {
+                    if (in_array(($child['key'] ?? null), ['enrollment-entry', 'pending-approvals'], true)) {
+                        return null;
+                    }
+
+                    if (($child['key'] ?? null) === 'doctor-list') {
+                        $child['title'] = 'My Enrollments';
+                    }
+
+                    return $child;
+                }, $node['children'] ?? [])));
+            }
+
+            return $node;
+        }, $nodes)));
+    }
+
+    private function renameSidebarNodeTitle(array $nodes, string $targetKey, string $newTitle): array
+    {
+        return array_map(function (array $node) use ($targetKey, $newTitle): array {
+            if (($node['key'] ?? null) === $targetKey) {
+                $node['title'] = $newTitle;
+            }
+
+            if (!empty($node['children']) && is_array($node['children'])) {
+                $node['children'] = $this->renameSidebarNodeTitle($node['children'], $targetKey, $newTitle);
+            }
+
+            return $node;
+        }, $nodes);
+    }
+
+    private function rewriteSidebarNodeRoute(array $nodes, string $targetKey, string $newRoute, array $newRouteNames): array
+    {
+        return array_map(function (array $node) use ($targetKey, $newRoute, $newRouteNames): array {
+            if (($node['key'] ?? null) === $targetKey) {
+                $node['route'] = $newRoute;
+                $node['route_names'] = $newRouteNames;
+            }
+
+            if (!empty($node['children']) && is_array($node['children'])) {
+                $node['children'] = $this->rewriteSidebarNodeRoute($node['children'], $targetKey, $newRoute, $newRouteNames);
+            }
+
+            return $node;
+        }, $nodes);
     }
 
     private function resolvePageKeysFromSidebarPermissionKeys(array $permissionKeys): array

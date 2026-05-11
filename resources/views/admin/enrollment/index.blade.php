@@ -182,7 +182,7 @@
     </div>
 
     <div class="mb-3 flex items-center justify-between">
-        <h3 class="renew-heading section-title mb-0">Doctor Renewal List</h3>
+        <h3 class="renew-heading section-title mb-0">{{ in_array((auth()->user()->role ?? null), ['admin', 'super_admin'], true) ? 'Enrollment Entry History' : 'My Enrollments' }}</h3>
         @if(!empty($showIncompleteOnly))
             <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">Showing incomplete document records</span>
         @endif
@@ -230,6 +230,7 @@
                     <th>Last Renewed DT</th>
                     <th>Next Renewal DT</th>
                     <th>Marketing staff name/Phone No.</th>
+                    <th>Approval Status</th>
                     <th>Auto email</th>
                     <th>Auto SMS</th>
                     <th>Action</th>
@@ -271,6 +272,18 @@
                             <div class="text-xs text-slate-500">{{ $enr->agent_phone_no ?? '—' }}</div>
                         </td>
                         <td>
+                            @php $st = strtolower((string) ($enr->status ?? 'pending')); @endphp
+                            @if($st === 'approved')
+                                <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Approved</span>
+                            @elseif($st === 'rejected')
+                                <span class="rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">Rejected</span>
+                            @else
+                                <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Pending Approval</span>
+                            @endif
+                            <div class="mt-1 text-xs text-slate-500">By {{ $enr->approver?->name ?? '—' }}</div>
+                            <div class="text-xs text-slate-500">{{ optional($enr->approved_at)->format('d M Y') ?? '—' }}</div>
+                        </td>
+                        <td>
                             @if($enr->bond_to_mail)
                                 <span class="rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">Enabled</span>
                             @else
@@ -289,17 +302,28 @@
                                 <a href="{{ route('admin.doctors.show', $enr->id) }}" class="renew-action bg-emerald-600" title="View" onclick="event.stopPropagation();">
                                     <i class="ri-eye-line"></i>
                                 </a>
-                                <a href="{{ route('admin.enrollment.edit', $enr->id) }}" class="renew-action bg-slate-700" title="Edit" onclick="event.stopPropagation();">
-                                    <i class="ri-pencil-line"></i>
-                                </a>
-                                <a target="_blank" href="{{ route('admin.doctors.show', $enr->id) }}?tab=doctor_documents" class="renew-action bg-blue-600" title="Document" onclick="event.stopPropagation();">
-                                    <i class="ri-file-line"></i>
-                                </a>
-                                <button type="button" class="renew-action bg-red-600" title="Renew" onclick="event.stopPropagation(); renewDoctor({{ $enr->id }})">R</button>
-                                <button type="button" class="renew-action bg-cyan-600" title="Send mail" onclick="event.stopPropagation(); sendMail({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-mail-line"></i></button>
-                                <button type="button" class="renew-action bg-sky-600" title="Send SMS" onclick="event.stopPropagation(); sendSms({{ $enr->id }}, '{{ $enr->mobile1 }}')"><i class="ri-message-2-line"></i></button>
-                                <button type="button" class="renew-action bg-green-700" title="Resend bond" onclick="event.stopPropagation(); resendBond({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-send-plane-line"></i></button>
-                                <button type="button" class="renew-action bg-indigo-600" title="Resend money receipt" onclick="event.stopPropagation(); resendReceipt({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-mail-send-line"></i></button>
+
+                                @php
+                                    $currentUser = auth()->user();
+                                    $isAdminUser = $currentUser && (
+                                        in_array(($currentUser->role ?? null), ['admin', 'super_admin'], true)
+                                        || (method_exists($currentUser, 'hasAdminRole') && $currentUser->hasAdminRole(['admin', 'super_admin']))
+                                    );
+                                @endphp
+
+                                @if($isAdminUser)
+                                    <a href="{{ route('admin.enrollment.edit', $enr->id) }}" class="renew-action bg-slate-700" title="Edit" onclick="event.stopPropagation();">
+                                        <i class="ri-pencil-line"></i>
+                                    </a>
+                                    <a target="_blank" href="{{ route('admin.doctors.show', $enr->id) }}?tab=doctor_documents" class="renew-action bg-blue-600" title="Document" onclick="event.stopPropagation();">
+                                        <i class="ri-file-line"></i>
+                                    </a>
+                                    <button type="button" class="renew-action bg-red-600" title="Renew" onclick="event.stopPropagation(); renewDoctor({{ $enr->id }})">R</button>
+                                    <button type="button" class="renew-action bg-cyan-600" title="Send mail" onclick="event.stopPropagation(); sendMail({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-mail-line"></i></button>
+                                    <button type="button" class="renew-action bg-sky-600" title="Send SMS" onclick="event.stopPropagation(); sendSms({{ $enr->id }}, '{{ $enr->mobile1 }}')"><i class="ri-message-2-line"></i></button>
+                                    <button type="button" class="renew-action bg-green-700" title="Resend bond" onclick="event.stopPropagation(); resendBond({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-send-plane-line"></i></button>
+                                    <button type="button" class="renew-action bg-indigo-600" title="Resend money receipt" onclick="event.stopPropagation(); resendReceipt({{ $enr->id }}, '{{ $enr->doctor_email }}')"><i class="ri-mail-send-line"></i></button>
+                                @endif
                             </div>
                         </td>
                     </tr>

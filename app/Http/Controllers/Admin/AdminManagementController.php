@@ -193,7 +193,13 @@ class AdminManagementController extends Controller
             'pan_no' => 'nullable|string|max:20',
             'dob' => 'nullable|date',
             'role_keys' => ['required', 'array', 'min:1'],
-            'role_keys.*' => [Rule::exists('admin_roles', 'role_key')],
+            'role_keys.*' => ['required', 'string', function ($attribute, $value, $fail) {
+                // Allow built-in roles (super_admin, admin) or roles that exist in admin_roles table
+                $builtInRoles = ['super_admin', 'admin'];
+                if (!in_array($value, $builtInRoles, true) && !AdminRole::where('role_key', $value)->exists()) {
+                    $fail("The selected {$attribute} is invalid.");
+                }
+            }],
             'status' => 'required|in:active,inactive',
             'profile_pic' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
             'sidebar_keys' => 'nullable|array',
@@ -283,7 +289,13 @@ class AdminManagementController extends Controller
             'pan_no' => 'nullable|string|max:20',
             'dob' => 'nullable|date',
             'role_keys' => ['required', 'array', 'min:1'],
-            'role_keys.*' => [Rule::exists('admin_roles', 'role_key')],
+            'role_keys.*' => ['required', 'string', function ($attribute, $value, $fail) {
+                // Allow built-in roles (super_admin, admin) or roles that exist in admin_roles table
+                $builtInRoles = ['super_admin', 'admin'];
+                if (!in_array($value, $builtInRoles, true) && !AdminRole::where('role_key', $value)->exists()) {
+                    $fail("The selected {$attribute} is invalid.");
+                }
+            }],
             'status' => 'required|in:active,inactive',
             'profile_pic' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
             'sidebar_keys' => 'nullable|array',

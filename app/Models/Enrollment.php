@@ -60,6 +60,7 @@ class Enrollment extends Model
         'created_by_role',
         'approved_by',
         'approved_at',
+        'approval_remarks',
         'rejection_reason',
     ];
 
@@ -104,5 +105,25 @@ class Enrollment extends Model
     public function policyReceipts()
     {
         return $this->hasMany(\App\Models\PolicyReceipt::class, 'enrollment_id');
+    }
+
+    public function doctorDocuments()
+    {
+        return $this->hasMany(DoctorDocument::class);
+    }
+
+    public function isPendingApproval(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->status === 'approved';
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->status === 'rejected';
     }
 }

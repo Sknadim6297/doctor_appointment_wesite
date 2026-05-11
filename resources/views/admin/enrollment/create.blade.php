@@ -477,7 +477,7 @@
         {{-- ─────────────── FORM ACTIONS ─────────────── --}}
         @php
             $user = Auth::user();
-            $isSuper = (method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin')) || (!empty($user->role) && str_contains(strtolower($user->role), 'admin'));
+            $isSuper = $isSuperAdmin ?? ((method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin')) || (($user->role ?? null) === 'super_admin'));
         @endphp
 
         <div class="flex items-center justify-end gap-3 border-t border-slate-200 pt-5">

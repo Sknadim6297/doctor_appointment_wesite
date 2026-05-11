@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminActivityLog;
+use App\Models\User;
 use App\Models\ComboPlan;
 use App\Models\Enrollment;
 use App\Models\HighRiskPlan;
@@ -12,9 +14,11 @@ use App\Models\Specialization;
 use App\Services\AdminAccessService;
 use App\Services\ActivityLogService;
 use App\Services\LocationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EnrollmentController extends Controller
@@ -39,23 +43,13 @@ class EnrollmentController extends Controller
         $renewType = request('renew_type', 'upcoming_renewed');
         $searchMonth = request('search_month');
         $searchYear = request('search_year');
+        $search = trim((string) request('search', ''));
+        $status = trim((string) request('status', ''));
+        $dateFrom = request('date_from');
+        $dateTo = request('date_to');
 
-        $query = Enrollment::query()->with('specialization')->orderByDesc('id');
-
-        if (!empty($searchMonth) && !empty($searchYear)) {
-            $monthNumber = date('n', strtotime($searchMonth . ' 1'));
-            $yearNumber = (int) $searchYear;
-
-            if ($renewType === 'renewed') {
-                $query
-                    ->whereMonth('created_at', $monthNumber)
-                    ->whereYear('created_at', $yearNumber);
-            } else {
-                // "Next Renewal" is computed as one year from initial enrollment date.
-                $query->whereRaw('MONTH(DATE_ADD(created_at, INTERVAL 1 YEAR)) = ?', [$monthNumber])
-                    ->whereRaw('YEAR(DATE_ADD(created_at, INTERVAL 1 YEAR)) = ?', [$yearNumber]);
-            }
-        }
+        $query = $this->enrollmentListingQuery(Auth::user());
+        $this->applyEnrollmentListFilters($query, request(), false);
 
         $enrollments = $query->paginate(20)->appends(request()->query());
 
@@ -83,14 +77,34 @@ class EnrollmentController extends Controller
             'years',
             'renewType',
             'searchMonth',
-            'searchYear'
+            'searchYear',
+            'search',
+            'status',
+            'dateFrom',
+            'dateTo'
         ));
+    }
+
+    public function myEnrollments()
+    {
+        $this->activityLogService->log(
+            request(),
+            'enrollment',
+            'view_my_enrollments',
+            description: 'Viewed my enrollments list.'
+        );
+
+        $query = $this->enrollmentListingQuery(Auth::user());
+        $this->applyEnrollmentListFilters($query, request(), false);
+
+        $enrollments = $query->paginate(20)->appends(request()->query());
+
+        return view('admin.enrollment.my-enrollments', compact('enrollments'));
     }
 
     public function incompleteDocuments(Request $request)
     {
-        $enrollments = Enrollment::query()
-            ->with('specialization')
+        $enrollments = $this->enrollmentListingQuery(Auth::user())
             ->where(function ($query) {
                 $query->whereNull('aadhar_card_no')
                     ->orWhere('aadhar_card_no', '')
@@ -133,20 +147,8 @@ class EnrollmentController extends Controller
         $searchMonth = $request->input('search_month');
         $searchYear = $request->input('search_year');
 
-        $query = Enrollment::query()->with('specialization')->orderByDesc('id');
-
-        if (!empty($searchMonth) && !empty($searchYear)) {
-            $monthNumber = date('n', strtotime($searchMonth . ' 1'));
-            $yearNumber = (int) $searchYear;
-
-            if ($renewType === 'renewed') {
-                $query->whereMonth('created_at', $monthNumber)
-                    ->whereYear('created_at', $yearNumber);
-            } else {
-                $query->whereRaw('MONTH(DATE_ADD(created_at, INTERVAL 1 YEAR)) = ?', [$monthNumber])
-                    ->whereRaw('YEAR(DATE_ADD(created_at, INTERVAL 1 YEAR)) = ?', [$yearNumber]);
-            }
-        }
+        $query = $this->enrollmentListingQuery(Auth::user());
+        $this->applyEnrollmentListFilters($query, $request, false);
 
         $fileName = 'doctor-renewal-report-' . now()->format('Ymd-His') . '.csv';
 
@@ -222,10 +224,11 @@ class EnrollmentController extends Controller
 
         $currentYear = (int) date('Y');
         $years = range($currentYear, 1950);
-        $officeUseAgent = $this->adminAccessService->sidebarAccessOwnerDetails('sidebar.doctor-management.enrollment-entry');
-        $officeUseAgentName = $officeUseAgent['name'] ?? 'Super Admin';
-        $officeUseAgentPhone = $officeUseAgent['phone'] ?? '';
+        $officeUseAgent = $this->currentUserAgentDetails(Auth::user());
+        $officeUseAgentName = $officeUseAgent['name'];
+        $officeUseAgentPhone = $officeUseAgent['phone'];
         $generatedCustomerId = old('customer_id_no', $this->generateCustomerId());
+        $isSuperAdmin = $this->isSuperAdminUser(Auth::user());
 
         return view('admin.enrollment.create', compact(
             'specializations',
@@ -238,69 +241,30 @@ class EnrollmentController extends Controller
             'defaultCityId',
             'officeUseAgentName',
             'officeUseAgentPhone',
-            'generatedCustomerId'
+            'generatedCustomerId',
+            'isSuperAdmin'
         ));
     }
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'customer_id_no'         => 'nullable|string|max:100',
-            'money_rc_no'            => 'nullable|string|max:50',
-            'agent_name'             => 'nullable|string|max:200',
-            'agent_phone_no'         => 'nullable|string|max:20',
-            'doctor_name'            => 'required|string|max:200',
-            'doctor_address'         => 'nullable|string|max:500',
-            'country'                => 'nullable|integer',
-            'country_name'           => 'nullable|string|max:100',
-            'state'                  => 'nullable|integer',
-            'state_name'             => 'nullable|string|max:100',
-            'city'                   => 'nullable|integer',
-            'city_name'              => 'nullable|string|max:100',
-            'postcode'               => 'nullable|string|max:20',
-            'mobile1'                => 'nullable|string|max:20',
-            'mobile2'                => 'required|string|max:20',
-            'doctor_email'           => 'nullable|email|max:200',
-            'dob'                    => 'nullable|date',
-            'qualification'          => 'nullable|string|max:200',
-            'qualification_year'     => 'nullable|array',
-            'qualification_year.*'   => 'nullable|integer',
-            'medical_registration_no'=> 'nullable|string|max:100',
-            'year_of_reg'            => 'nullable|integer',
-            'clinic_address'         => 'nullable|string|max:500',
-            'aadhar_card_no'         => 'required|string|max:20',
-            'pan_card_no'            => 'required|string|max:20',
-            'specialization_id'      => 'nullable|integer|exists:specializations,id',
-            'payment_mode'           => 'nullable|string|max:50',
-            'plan'                   => 'nullable|integer|in:1,2,3',
-            'plan_name'              => 'nullable|string|max:50',
-            'coverage_id'            => 'nullable|integer',
-            'service_amount'         => 'nullable|numeric|min:0',
-            'payment_amount'         => 'nullable|numeric|min:0',
-            'total_amount'           => 'nullable|numeric|min:0',
-            'payment_method'         => 'nullable|integer|in:1,2,3',
-            'payment_cheque'         => 'nullable|string|max:100',
-            'payment_bank_name'      => 'nullable|string|max:200',
-            'payment_branch_name'    => 'nullable|string|max:200',
-            'payment_upi_transaction_id' => 'nullable|string|max:100',
-            'payment_cash_date'      => 'nullable|date',
-            'bond_to_mail'           => 'nullable|in:Y',
-        ]);
+        $validated = $this->validatedEnrollmentData($request);
+
+        $user = Auth::user();
+        $isSuperAdmin = $this->isSuperAdminUser($user);
+        $agentDetails = $this->currentUserAgentDetails($user);
 
         $validated['bond_to_mail'] = isset($validated['bond_to_mail']) && $validated['bond_to_mail'] === 'Y';
-        $validated['created_by']   = Auth::id();
+        $validated['created_by'] = $user?->id;
+        $validated['agent_id'] = $user?->id;
+        $validated['created_by_role'] = $this->resolveCreatorRole($user);
+        $validated['agent_name'] = $agentDetails['name'];
+        $validated['agent_phone_no'] = $agentDetails['phone'];
 
-        // Auto-generate customer_id_no if not provided
         if (empty($validated['customer_id_no'])) {
             $validated['customer_id_no'] = $this->generateCustomerId();
         }
 
-        // Auto-fill agent_name from logged-in user if not provided
-        if (empty($validated['agent_name'])) {
-            $validated['agent_name'] = Auth::user()->name ?? '';
-        }
-
-        // Resolve city_name / state_name from IDs if not supplied
         if (empty($validated['country_name']) && !empty($validated['country'])) {
             $countries = LocationService::countries();
             $validated['country_name'] = $countries[(int) $validated['country']] ?? null;
@@ -314,49 +278,42 @@ class EnrollmentController extends Controller
             $validated['city_name'] = $cities[(int) $validated['city']] ?? null;
         }
 
-        // set agent_id and created_by_role for tracking
-        $validated['agent_id'] = Auth::id();
-        $validated['created_by_role'] = $this->getUserRoleKey(Auth::user());
+        $status = $isSuperAdmin ? 'approved' : 'pending';
+        $enrollment = null;
 
-        $enrollment = Enrollment::create($validated);
+        DB::transaction(function () use (&$enrollment, $validated, $isSuperAdmin, $user, $request, $status): void {
+            $enrollment = Enrollment::create(array_merge($validated, [
+                'status' => $status,
+                'approved_by' => $isSuperAdmin ? $user?->id : null,
+                'approved_at' => $isSuperAdmin ? now() : null,
+            ]));
 
-        // If created by an agent, and the role is 'agent', mark as pending
-        if (($validated['created_by_role'] ?? '') === 'agent') {
-            $enrollment->status = 'pending';
-            $enrollment->save();
-        } else {
-            // Created by super admin -> auto-approve
-            $enrollment->status = 'approved';
-            $enrollment->approved_by = Auth::id();
-            $enrollment->approved_at = now();
-            $enrollment->save();
-        }
-
-        if ($enrollment) {
             $this->activityLogService->log(
                 $request,
                 'enrollment',
-                'create',
+                $status === 'approved' ? 'create-approved' : 'create-pending',
                 $enrollment,
-                Auth::user(),
-                'Created a new enrollment record.',
+                $user,
+                $status === 'approved'
+                    ? 'Created a new enrollment record and approved it immediately.'
+                    : 'Created a new enrollment record and sent it for approval.',
                 [
                     'doctor_name' => $enrollment->doctor_name,
                     'membership_no' => $enrollment->customer_id_no,
+                    'status' => $enrollment->status,
                 ]
             );
-        }
+        });
 
-        // Redirect based on status / creator role
-        if ($enrollment->status === 'pending') {
+        if ($isSuperAdmin) {
             return redirect()
-                ->route('admin.enrollment')
-                ->with('success', 'Sent for approval.');
+                ->route('admin.enrollment.step2', $enrollment)
+                ->with('success', 'Enrollment saved successfully. Review the document preview and continue to post submission.');
         }
 
         return redirect()
-            ->route('admin.enrollment.step2', $enrollment)
-            ->with('success', 'Enrollment saved successfully. Review the document preview and continue to post submission.');
+            ->route('admin.enrollment.details', $enrollment)
+            ->with('success', 'Enrollment submitted for approval. It is now pending super admin review.');
     }
 
     /**
@@ -365,6 +322,13 @@ class EnrollmentController extends Controller
     public function edit($id)
     {
         $enrollment = Enrollment::findOrFail($id);
+        $this->authorizeEnrollmentAccess($enrollment);
+
+        if ($this->shouldForceReadOnly($enrollment)) {
+            return redirect()
+                ->route('admin.enrollment.details', $enrollment)
+                ->with('info', 'This enrollment is pending approval and is available in read-only mode.');
+        }
 
         $specializations = Specialization::orderBy('name')->get();
         $countries = LocationService::countries();
@@ -378,9 +342,9 @@ class EnrollmentController extends Controller
 
         $currentYear = (int) date('Y');
         $years = range($currentYear, 1950);
-        $officeUseAgent = $this->adminAccessService->sidebarAccessOwnerDetails('sidebar.doctor-management.enrollment-entry');
-        $officeUseAgentName = $officeUseAgent['name'] ?? 'Super Admin';
-        $officeUseAgentPhone = $officeUseAgent['phone'] ?? '';
+        $officeUseAgent = $this->currentUserAgentDetails(Auth::user());
+        $officeUseAgentName = $officeUseAgent['name'];
+        $officeUseAgentPhone = $officeUseAgent['phone'];
 
         return view('admin.enrollment.create', compact(
             'specializations',
@@ -398,6 +362,7 @@ class EnrollmentController extends Controller
             'submitRoute' => request()->routeIs('admin.enrollment.legacy-edit')
                 ? route('admin.enrollment.legacy-update', $enrollment->id)
                 : route('admin.enrollment.update', $enrollment->id),
+            'isSuperAdmin' => $this->isSuperAdminUser(Auth::user()),
         ]);
     }
 
@@ -407,52 +372,31 @@ class EnrollmentController extends Controller
     public function update(Request $request, $id)
     {
         $enrollment = Enrollment::findOrFail($id);
+        $this->authorizeEnrollmentAccess($enrollment);
 
-        $validated = $request->validate([
-            'customer_id_no'         => 'nullable|string|max:100',
-            'money_rc_no'            => 'nullable|string|max:50',
-            'agent_name'             => 'nullable|string|max:200',
-            'agent_phone_no'         => 'nullable|string|max:20',
-            'doctor_name'            => 'required|string|max:200',
-            'doctor_address'         => 'nullable|string|max:500',
-            'country'                => 'nullable|integer',
-            'country_name'           => 'nullable|string|max:100',
-            'state'                  => 'nullable|integer',
-            'state_name'             => 'nullable|string|max:100',
-            'city'                   => 'nullable|integer',
-            'city_name'              => 'nullable|string|max:100',
-            'postcode'               => 'nullable|string|max:20',
-            'mobile1'                => 'nullable|string|max:20',
-            'mobile2'                => 'required|string|max:20',
-            'doctor_email'           => 'nullable|email|max:200',
-            'dob'                    => 'nullable|date',
-            'qualification'          => 'nullable|string|max:200',
-            'qualification_year'     => 'nullable|array',
-            'qualification_year.*'   => 'nullable|integer',
-            'medical_registration_no'=> 'nullable|string|max:100',
-            'year_of_reg'            => 'nullable|integer',
-            'clinic_address'         => 'nullable|string|max:500',
-            'aadhar_card_no'         => 'required|string|max:20',
-            'pan_card_no'            => 'required|string|max:20',
-            'specialization_id'      => 'nullable|integer|exists:specializations,id',
-            'payment_mode'           => 'nullable|string|max:50',
-            'plan'                   => 'nullable|integer|in:1,2,3',
-            'coverage_id'            => 'nullable|integer',
-            'service_amount'         => 'nullable|numeric|min:0',
-            'payment_amount'         => 'nullable|numeric|min:0',
-            'total_amount'           => 'nullable|numeric|min:0',
-            'payment_method'         => 'nullable|integer|in:1,2,3',
-            'payment_cheque'         => 'nullable|string|max:100',
-            'payment_bank_name'      => 'nullable|string|max:200',
-            'payment_branch_name'    => 'nullable|string|max:200',
-            'payment_upi_transaction_id' => 'nullable|string|max:100',
-            'payment_cash_date'      => 'nullable|date',
-            'bond_to_mail'           => 'nullable|in:Y',
-        ]);
+        if ($this->shouldForceReadOnly($enrollment)) {
+            return redirect()
+                ->route('admin.enrollment.details', $enrollment)
+                ->with('info', 'This enrollment is pending approval and cannot be edited until it is approved.');
+        }
 
+        $validated = $this->validatedEnrollmentData($request);
         $validated['bond_to_mail'] = isset($validated['bond_to_mail']) && $validated['bond_to_mail'] === 'Y';
 
         $enrollment->update($validated);
+
+        $this->activityLogService->log(
+            $request,
+            'enrollment',
+            'update',
+            $enrollment,
+            Auth::user(),
+            'Updated an enrollment record.',
+            [
+                'doctor_name' => $enrollment->doctor_name,
+                'membership_no' => $enrollment->customer_id_no,
+            ]
+        );
 
         return redirect()->route('admin.enrollment')->with('success', 'Enrollment updated successfully.');
     }
@@ -463,10 +407,31 @@ class EnrollmentController extends Controller
     public function approve(Request $request, $id)
     {
         $enrollment = Enrollment::findOrFail($id);
-        $enrollment->status = 'approved';
-        $enrollment->approved_by = Auth::id();
-        $enrollment->approved_at = now();
-        $enrollment->save();
+        $validated = $request->validate([
+            'approval_remarks' => 'nullable|string|max:2000',
+        ]);
+
+        $enrollment->forceFill([
+            'status' => 'approved',
+            'approved_by' => Auth::id(),
+            'approved_at' => now(),
+            'approval_remarks' => $validated['approval_remarks'] ?? null,
+            'rejection_reason' => null,
+        ])->save();
+
+        $this->activityLogService->log(
+            $request,
+            'enrollment',
+            'approve',
+            $enrollment,
+            Auth::user(),
+            'Approved an enrollment record.',
+            [
+                'approval_remarks' => $validated['approval_remarks'] ?? null,
+                'doctor_name' => $enrollment->doctor_name,
+                'membership_no' => $enrollment->customer_id_no,
+            ]
+        );
 
         return redirect()->route('admin.enrollment.pending')->with('success', 'Enrollment approved.');
     }
@@ -476,12 +441,32 @@ class EnrollmentController extends Controller
      */
     public function reject(Request $request, $id)
     {
-        $request->validate(['rejection_reason' => 'nullable|string|max:2000']);
+        $validated = $request->validate([
+            'rejection_reason' => 'nullable|string|max:2000',
+            'approval_remarks' => 'nullable|string|max:2000',
+        ]);
 
         $enrollment = Enrollment::findOrFail($id);
-        $enrollment->status = 'rejected';
-        $enrollment->rejection_reason = $request->input('rejection_reason');
-        $enrollment->save();
+        $enrollment->forceFill([
+            'status' => 'rejected',
+            'rejection_reason' => $validated['rejection_reason'] ?? null,
+            'approval_remarks' => $validated['approval_remarks'] ?? null,
+        ])->save();
+
+        $this->activityLogService->log(
+            $request,
+            'enrollment',
+            'reject',
+            $enrollment,
+            Auth::user(),
+            'Rejected an enrollment record.',
+            [
+                'rejection_reason' => $validated['rejection_reason'] ?? null,
+                'approval_remarks' => $validated['approval_remarks'] ?? null,
+                'doctor_name' => $enrollment->doctor_name,
+                'membership_no' => $enrollment->customer_id_no,
+            ]
+        );
 
         return redirect()->route('admin.enrollment.pending')->with('success', 'Enrollment rejected.');
     }
@@ -493,9 +478,33 @@ class EnrollmentController extends Controller
     {
         $this->activityLogService->log(request(), 'enrollment', 'view_pending', description: 'Viewed pending approvals list.');
 
-        $enrollments = Enrollment::where('status', 'pending')->orderByDesc('id')->paginate(25);
+        $query = $this->enrollmentListingQuery(Auth::user());
+        $this->applyEnrollmentListFilters($query, request(), true);
 
-        return view('admin.enrollment.pending', compact('enrollments'));
+        $enrollments = $query->paginate(25)->appends(request()->query());
+
+        $employees = User::query()
+            ->where('role', '!=', 'super_admin')
+            ->orderBy('name')
+            ->get(['id', 'name', 'phone']);
+
+        // Compute current user's permissions once and pass to the view to avoid per-row inconsistencies
+        $currentUser = Auth::user();
+        $isSuperAdmin = $this->isSuperAdminUser($currentUser);
+        $isAdmin = (bool) ($currentUser && (
+            (method_exists($currentUser, 'hasAdminRole') && $currentUser->hasAdminRole('admin')) ||
+            (($currentUser->role ?? null) === 'admin')
+        ));
+
+        // Approve/Reject should be restricted to Admins and Super Admins only
+        // (do not show approval actions to regular employees even if a privilege record exists)
+        $canApprove = $isSuperAdmin || $isAdmin;
+        $canReject = $isSuperAdmin || $isAdmin;
+
+        // Edit allowed for super-admin/admin or when explicit edit privilege exists
+        $canEdit = $isSuperAdmin || $isAdmin || $this->adminAccessService->hasPrivilege($currentUser, 'enrollment', 'edit');
+
+        return view('admin.enrollment.pending', compact('enrollments', 'employees', 'canApprove', 'canReject', 'canEdit', 'isSuperAdmin', 'isAdmin'));
     }
 
     /**
@@ -504,24 +513,42 @@ class EnrollmentController extends Controller
     public function showDetails($id)
     {
         $enrollment = Enrollment::query()
-            ->with('specialization')
+            ->with(['specialization', 'creator', 'approver', 'policyReceipts', 'doctorDocuments'])
             ->findOrFail($id);
 
-        return view('admin.enrollment.details', compact('enrollment'));
+        $this->authorizeEnrollmentAccess($enrollment);
+
+        $latestActivity = AdminActivityLog::query()
+            ->with(['actor:id,name,email', 'owner:id,name,email'])
+            ->where('subject_type', Enrollment::class)
+            ->where('subject_id', $enrollment->id)
+            ->orderByDesc('occurred_at')
+            ->first();
+
+        return view('admin.enrollment.details', compact('enrollment', 'latestActivity'));
+    }
+
+    public function myEnrollmentDetails($id)
+    {
+        $enrollment = Enrollment::query()
+            ->with(['specialization', 'creator', 'approver', 'policyReceipts', 'doctorDocuments'])
+            ->findOrFail($id);
+
+        $this->authorizeEnrollmentAccess($enrollment);
+
+        $latestActivity = AdminActivityLog::query()
+            ->with(['actor:id,name,email', 'owner:id,name,email'])
+            ->where('subject_type', Enrollment::class)
+            ->where('subject_id', $enrollment->id)
+            ->orderByDesc('occurred_at')
+            ->first();
+
+        return view('admin.enrollment.my-enrollment-details', compact('enrollment', 'latestActivity'));
     }
 
     private function getUserRoleKey($user): string
     {
-        // Basic mapping: if user has admin role or role string contains 'admin' treat as super_admin
-        if (method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin')) {
-            return 'super_admin';
-        }
-
-        if (!empty($user->role) && str_contains(strtolower($user->role), 'admin')) {
-            return 'super_admin';
-        }
-
-        return 'agent';
+        return $this->resolveCreatorRole($user);
     }
 
     public function updateLegacy(Request $request, $id)
@@ -543,10 +570,12 @@ class EnrollmentController extends Controller
 
     public function stepTwo(Enrollment $enrollment)
     {
-        // Show preview only when approved or created by super admin
-        $isCreatedBySuper = ($enrollment->created_by_role ?? '') === 'super_admin';
-        if ($enrollment->status !== 'approved' && !$isCreatedBySuper) {
-            return redirect()->route('admin.enrollment')->with('info', 'Preview will be available after approval');
+        $this->authorizeEnrollmentAccess($enrollment);
+
+        if ($enrollment->status !== 'approved') {
+            return redirect()
+                ->route('admin.enrollment.details', $enrollment)
+                ->with('info', 'This enrollment is pending approval and is available in read-only mode.');
         }
 
         return view('admin.enrollment.step2', compact('enrollment'));
@@ -554,6 +583,14 @@ class EnrollmentController extends Controller
 
     public function stepThree(Enrollment $enrollment)
     {
+        $this->authorizeEnrollmentAccess($enrollment);
+
+        if ($enrollment->status !== 'approved') {
+            return redirect()
+                ->route('admin.enrollment.details', $enrollment)
+                ->with('info', 'This enrollment is pending approval and is available in read-only mode.');
+        }
+
         $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
             ->orderByDesc('id')
             ->get();
@@ -563,6 +600,14 @@ class EnrollmentController extends Controller
 
     public function success(Enrollment $enrollment)
     {
+        $this->authorizeEnrollmentAccess($enrollment);
+
+        if ($enrollment->status !== 'approved') {
+            return redirect()
+                ->route('admin.enrollment.details', $enrollment)
+                ->with('info', 'This enrollment is pending approval and is available in read-only mode.');
+        }
+
         $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
             ->orderByDesc('id')
             ->get();
@@ -672,5 +717,183 @@ class EnrollmentController extends Controller
         }
 
         return response()->json($options);
+    }
+
+    private function validatedEnrollmentData(Request $request): array
+    {
+        return $request->validate([
+            'customer_id_no'         => 'nullable|string|max:100',
+            'money_rc_no'            => 'nullable|string|max:50',
+            'agent_name'             => 'nullable|string|max:200',
+            'agent_phone_no'         => 'nullable|string|max:20',
+            'doctor_name'            => 'required|string|max:200',
+            'doctor_address'         => 'nullable|string|max:500',
+            'country'                => 'nullable|integer',
+            'country_name'           => 'nullable|string|max:100',
+            'state'                  => 'nullable|integer',
+            'state_name'             => 'nullable|string|max:100',
+            'city'                   => 'nullable|integer',
+            'city_name'              => 'nullable|string|max:100',
+            'postcode'               => 'nullable|string|max:20',
+            'mobile1'                => 'nullable|string|max:20',
+            'mobile2'                => 'required|string|max:20',
+            'doctor_email'           => 'nullable|email|max:200',
+            'dob'                    => 'nullable|date',
+            'qualification'          => 'nullable|string|max:200',
+            'qualification_year'     => 'nullable|array',
+            'qualification_year.*'   => 'nullable|integer',
+            'medical_registration_no'=> 'nullable|string|max:100',
+            'year_of_reg'            => 'nullable|integer',
+            'clinic_address'         => 'nullable|string|max:500',
+            'aadhar_card_no'         => 'required|string|max:20',
+            'pan_card_no'            => 'required|string|max:20',
+            'specialization_id'      => 'nullable|integer|exists:specializations,id',
+            'payment_mode'           => 'nullable|string|max:50',
+            'plan'                   => 'nullable|integer|in:1,2,3',
+            'plan_name'              => 'nullable|string|max:50',
+            'coverage_id'            => 'nullable|integer',
+            'coverage'               => 'nullable|numeric|min:0',
+            'service_amount'         => 'nullable|numeric|min:0',
+            'payment_amount'         => 'nullable|numeric|min:0',
+            'total_amount'           => 'nullable|numeric|min:0',
+            'payment_method'         => 'nullable|integer|in:1,2,3',
+            'payment_cheque'         => 'nullable|string|max:100',
+            'payment_bank_name'      => 'nullable|string|max:200',
+            'payment_branch_name'    => 'nullable|string|max:200',
+            'payment_upi_transaction_id' => 'nullable|string|max:100',
+            'payment_cash_date'      => 'nullable|date',
+            'bond_to_mail'           => 'nullable|in:Y',
+        ]);
+    }
+
+    private function resolveCreatorRole($user): string
+    {
+        if ($this->isSuperAdminUser($user)) {
+            return 'super_admin';
+        }
+
+        return (string) ($user?->role ?: 'agent');
+    }
+
+    private function isSuperAdminUser($user): bool
+    {
+        return (bool) ($user && (
+            (method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin'))
+            || (($user->role ?? null) === 'super_admin')
+        ));
+    }
+
+    private function currentUserAgentDetails(?User $user): array
+    {
+        $name = trim((string) ($user?->name ?? ''));
+
+        if ($name === '') {
+            $name = trim((string) (($user?->first_name ?? '') . ' ' . ($user?->last_name ?? '')));
+        }
+
+        if ($name === '') {
+            $name = $this->isSuperAdminUser($user) ? 'Super Admin' : 'Employee';
+        }
+
+        return [
+            'name' => $name,
+            'phone' => (string) ($user?->phone ?? ''),
+        ];
+    }
+
+    private function enrollmentListingQuery(?User $user): Builder
+    {
+        $query = Enrollment::query()->with(['specialization', 'creator', 'approver'])->orderByDesc('id');
+
+        if (!$this->isSuperAdminUser($user) && $user?->id) {
+            $query->where(function (Builder $builder) use ($user): void {
+                $builder->where('created_by', $user->id)
+                    ->orWhere('agent_id', $user->id);
+            });
+        }
+
+        return $query;
+    }
+
+    private function applyEnrollmentListFilters(Builder $query, Request $request, bool $defaultPendingOnly): void
+    {
+        $search = trim((string) $request->input('search', ''));
+        $status = trim((string) $request->input('status', ''));
+        $employeeId = (int) $request->input('employee_id', 0);
+        $searchMonth = $request->input('search_month');
+        $searchYear = $request->input('search_year');
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
+
+        if ($search !== '') {
+            $query->where(function (Builder $builder) use ($search): void {
+                $like = '%' . $search . '%';
+
+                $builder->where('customer_id_no', 'like', $like)
+                    ->orWhere('doctor_name', 'like', $like)
+                    ->orWhere('mobile1', 'like', $like)
+                    ->orWhere('agent_name', 'like', $like)
+                    ->orWhere('agent_phone_no', 'like', $like);
+
+                if (is_numeric($search)) {
+                    $builder->orWhere('id', (int) $search);
+                }
+            });
+        }
+
+        if ($status !== '') {
+            $query->where('status', $status);
+        } elseif ($defaultPendingOnly) {
+            $query->where('status', 'pending');
+        }
+
+        if ($employeeId > 0) {
+            $query->where(function (Builder $builder) use ($employeeId): void {
+                $builder->where('created_by', $employeeId)
+                    ->orWhere('agent_id', $employeeId);
+            });
+        }
+
+        if (!empty($searchMonth) && !empty($searchYear)) {
+            $monthNumber = date('n', strtotime($searchMonth . ' 1'));
+            $yearNumber = (int) $searchYear;
+
+            $query->whereMonth('created_at', $monthNumber)
+                ->whereYear('created_at', $yearNumber);
+        }
+
+        if (!empty($dateFrom)) {
+            $query->whereDate('created_at', '>=', $dateFrom);
+        }
+
+        if (!empty($dateTo)) {
+            $query->whereDate('created_at', '<=', $dateTo);
+        }
+    }
+
+    private function authorizeEnrollmentAccess(Enrollment $enrollment): void
+    {
+        if ($this->isPrivilegedAdminUser(Auth::user())) {
+            return;
+        }
+
+        $userId = (int) Auth::id();
+
+        if ($userId <= 0 || ((int) $enrollment->created_by !== $userId && (int) $enrollment->agent_id !== $userId)) {
+            abort(403, 'You can only access your own enrollment records.');
+        }
+    }
+
+    private function shouldForceReadOnly(Enrollment $enrollment): bool
+    {
+        return $enrollment->status !== 'approved' && !$this->isPrivilegedAdminUser(Auth::user());
+    }
+
+    private function isPrivilegedAdminUser(?User $user): bool
+    {
+        return (bool) ($user && (
+            in_array(($user->role ?? null), ['admin', 'super_admin'], true) ||
+            (method_exists($user, 'hasAdminRole') && $user->hasAdminRole(['admin', 'super_admin']))
+        ));
     }
 }

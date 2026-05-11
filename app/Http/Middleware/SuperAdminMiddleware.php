@@ -24,7 +24,13 @@ class SuperAdminMiddleware
         /** @var User $user */
         $user = Auth::user();
 
-        if (!$user->hasAdminRole('super_admin')) {
+        // Check if user is super admin - validate against both role field and admin roles
+        $isSuperAdmin = $user && (
+            ($user->role ?? null) === 'super_admin' ||
+            (method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin'))
+        );
+
+        if (!$isSuperAdmin) {
             abort(403, 'Unauthorized action. Super Admin access required.');
         }
 
