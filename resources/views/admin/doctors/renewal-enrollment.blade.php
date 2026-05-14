@@ -176,7 +176,7 @@
                                     Qualification <span class="text-red-500">*</span>
                                 </label>
                                 <input type="text" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                                    name="qualification" id="qualification" value="{{ $doctor->qualification ?? '' }}">
+                                    name="qualification" id="qualification" value="{{ is_array($doctor->qualification) ? implode(', ', array_map(fn($p) => is_array($p) ? ($p['name'] ?? '') : (string)$p, $doctor->qualification)) : ($doctor->qualification ?? '') }}">
                                 <span id="error_qualification" class="text-red-600 text-xs"></span>
                             </div>
 

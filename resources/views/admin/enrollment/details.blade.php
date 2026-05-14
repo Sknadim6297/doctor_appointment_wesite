@@ -20,6 +20,14 @@
         default => $na,
     };
     $qualificationYears = is_array($enrollment->qualification_year) ? implode(', ', array_filter($enrollment->qualification_year)) : (string) ($enrollment->qualification_year ?? '');
+    $qualificationLabel = '';
+    if (is_array($enrollment->qualification)) {
+        $qualificationLabel = implode(', ', array_map(fn($p) => is_array($p) ? ($p['name'] ?? '') : (string) $p, $enrollment->qualification));
+    } else {
+        $qualificationLabel = (string) ($enrollment->qualification ?? '');
+    }
+    $wfNorm = \App\Support\EnrollmentWorkflow::normalize($enrollment->workflow_status ?? '');
+    $wfLabel = \App\Support\EnrollmentWorkflow::label($enrollment->workflow_status);
     $creator = $enrollment->creator;
     $approver = $enrollment->approver;
     $currentUser = auth()->user();
@@ -27,24 +35,90 @@
         in_array(($currentUser->role ?? null), ['admin', 'super_admin'], true) ||
         (method_exists($currentUser, 'hasAdminRole') && $currentUser->hasAdminRole(['admin', 'super_admin']))
     );
+    $ea = $editAccessState ?? ['locked' => false, 'session_active' => false, 'session_expires_at' => null, 'pending_otp' => false, 'requester' => null, 'can_request' => false];
+    $editWorkflowUnlocked = $isPrivilegedAdmin || empty($ea['locked']) || !empty($ea['session_active']);
     $canProceedToStep2 = $status === 'approved' && (
         (auth()->id() === (int) $enrollment->created_by) || $isPrivilegedAdmin
-    );
-    $backRoute = $isPrivilegedAdmin ? route('admin.enrollment.pending') : route('admin.enrollment');
-    $backLabel = $isPrivilegedAdmin ? 'Pending Approvals' : 'My Enrollments';
+    ) && $editWorkflowUnlocked;
+    $backRoute = $isPrivilegedAdmin ? route('admin.enrollment.monitoring') : route('admin.enrollment');
+    $backLabel = $isPrivilegedAdmin ? 'Enrollment CRM' : 'My Enrollments';
 @endphp
 
 <!-- Header Navigation -->
-<div class="mb-6 flex items-center gap-3">
+<div class="mb-6 flex flex-wrap items-center gap-3">
     <a href="{{ $backRoute }}" class="btn btn-ghost">
         ← Back to {{ $backLabel }}
     </a>
     @if($isPrivilegedAdmin)
         <a href="{{ route('admin.enrollment.edit', $enrollment->id) }}" class="btn btn-primary">
-            Edit Enrollment
+            Edit enrollment
+        </a>
+    @elseif(!empty($ea['session_active']))
+        <a href="{{ route('admin.enrollment.edit', $enrollment->id) }}" class="btn btn-primary">
+            Edit enrollment (temporary access)
         </a>
     @endif
+    @if($canResumeWorkflow ?? false)
+        <a href="{{ route('admin.enrollment.resume', $enrollment) }}" class="btn btn-primary bg-blue-700 hover:bg-blue-800">
+            Resume workflow
+        </a>
+    @endif
+    @if(!empty($ea['can_request']) && empty($ea['pending_otp']))
+        <button type="button" id="btnRequestEditAccess" class="btn rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100">
+            Request edit access
+        </button>
+    @endif
 </div>
+
+@if(!empty($ea['locked']) && empty($ea['session_active']) && !$isPrivilegedAdmin)
+    <div class="mb-4 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+        <strong>View only.</strong> This enrollment is approved, submitted, or completed. Direct editing is disabled. Use <em>Request edit access</em> so an administrator can verify an OTP sent to their email and grant you a time-limited edit window.
+    </div>
+@endif
+
+@if(!empty($ea['session_active']) && !empty($ea['session_expires_at']))
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <span><strong>Temporary edit access active.</strong> Session ends at {{ $ea['session_expires_at']->format('d M Y, h:i A') }}.</span>
+        <span id="editAccessCountdown" class="font-mono font-bold" data-expires-ts="{{ $ea['session_expires_at']->getTimestamp() }}">—</span>
+    </div>
+@endif
+
+@if($isPrivilegedAdmin && !empty($ea['pending_otp']))
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+        <div>
+            <strong>Edit access requested</strong>
+            @if(!empty($ea['requester']))
+                <span>by {{ $ea['requester']->name ?? 'Staff' }}.</span>
+            @endif
+            <span class="block text-xs text-violet-800 mt-1">Check administrator email for the OTP, then verify below.</span>
+        </div>
+        <button type="button" onclick="document.getElementById('verifyEditAccessModal').showModal()" class="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-600">
+            Verify OTP
+        </button>
+    </div>
+@endif
+
+@if(!empty($ea['can_request']) && !empty($ea['pending_otp']))
+    <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <strong>Request pending.</strong> An OTP has been emailed to administrators. Editing unlocks after they verify the OTP.
+    </div>
+@endif
+
+<dialog id="verifyEditAccessModal" class="rounded-xl border border-slate-200 shadow-2xl backdrop:bg-black/50">
+    <div class="w-full max-w-md p-6">
+        <h2 class="mb-2 text-xl font-bold text-slate-900">Verify edit access OTP</h2>
+        <p class="mb-4 text-sm text-slate-600">Enter the 6-digit code from the administrator email.</p>
+        <form id="verifyEditAccessForm" class="space-y-4">
+            @csrf
+            <input type="text" name="otp" id="verifyEditOtpInput" maxlength="6" inputmode="numeric" pattern="[0-9]*" class="w-full rounded-lg border border-slate-300 px-4 py-2 text-center text-lg tracking-widest" placeholder="000000" autocomplete="one-time-code">
+            <p id="verifyEditAccessMsg" class="text-sm text-slate-600"></p>
+            <div class="flex gap-2">
+                <button type="button" onclick="document.getElementById('verifyEditAccessModal').close()" class="flex-1 rounded-lg border border-slate-300 px-4 py-2 font-semibold">Cancel</button>
+                <button type="submit" class="flex-1 rounded-lg bg-violet-700 px-4 py-2 font-semibold text-white hover:bg-violet-600">Verify</button>
+            </div>
+        </form>
+    </div>
+</dialog>
 
 <!-- Main Header Card -->
 <div class="mb-6 rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-6 shadow-sm">
@@ -89,6 +163,53 @@
     @endif
 </div>
 
+<!-- Pipeline: steps + activity -->
+<div class="mb-6 grid gap-4 lg:grid-cols-2">
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Step progress</h3>
+        <p class="mt-1 text-xs text-slate-500">Current step {{ (int) ($enrollment->current_step ?? 1) }} · Last activity {{ optional($enrollment->last_activity_at)->format('d M Y, h:i A') ?? $na }}</p>
+        <ol class="mt-4 space-y-3">
+            @foreach($workflowSteps ?? [] as $step)
+                @php
+                    $st = $step['state'] ?? 'pending';
+                    $dot = $st === 'completed' ? 'bg-emerald-500' : ($st === 'current' ? 'bg-blue-600 ring-4 ring-blue-100' : 'bg-slate-300');
+                @endphp
+                <li class="flex gap-3">
+                    <span class="mt-1 h-3 w-3 shrink-0 rounded-full {{ $dot }}"></span>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-900">Step {{ $step['step'] ?? '' }} — {{ $step['label'] ?? '' }}</p>
+                        <p class="text-xs capitalize text-slate-500">{{ $st }}</p>
+                    </div>
+                </li>
+            @endforeach
+        </ol>
+        <div class="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <span class="font-semibold text-slate-800">Workflow:</span>
+            <span class="ml-1 inline-flex items-center rounded-full px-2 py-0.5 font-semibold ring-1 ring-inset {{ \App\Support\EnrollmentWorkflow::badgeClasses($enrollment->workflow_status) }}">{{ \App\Support\EnrollmentWorkflow::displayStatus($enrollment) }}</span>
+        </div>
+    </div>
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Activity timeline</h3>
+        <p class="mt-1 text-xs text-slate-500">Who changed what (Admin / Sub Admin / Super Admin)</p>
+        <div class="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1 text-sm">
+            @forelse($activityTimeline ?? [] as $log)
+                <div class="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="font-semibold text-slate-900">{{ $log->actor?->name ?? 'System' }}</span>
+                        <span class="text-xs text-slate-500">{{ optional($log->occurred_at)->format('d M H:i') }}</span>
+                    </div>
+                    <p class="text-xs text-slate-500">{{ ucfirst(str_replace('_', ' ', $log->action ?? '')) }} · {{ str_replace('_', ' ', $log->actor?->role ?? '') }}</p>
+                    @if($log->description)
+                        <p class="mt-1 text-xs text-slate-700">{{ $log->description }}</p>
+                    @endif
+                </div>
+            @empty
+                <p class="text-sm text-slate-500">No logged activity yet.</p>
+            @endforelse
+        </div>
+    </div>
+</div>
+
 <!-- Quick Summary Cards -->
 <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     <div class="rounded-2xl border border-slate-100 bg-white p-4 shadow-xs">
@@ -108,7 +229,8 @@
     </div>
     <div class="rounded-2xl border border-slate-100 bg-white p-4 shadow-xs">
         <p class="text-xs font-semibold uppercase text-slate-500">Status</p>
-        <p class="mt-2 text-lg font-semibold text-slate-900">{{ ucfirst($status) }}</p>
+        <p class="mt-2 text-lg font-semibold text-slate-900">{{ \App\Support\EnrollmentWorkflow::displayStatus($enrollment) }}</p>
+        <p class="mt-1 text-xs text-slate-500">Legacy status: {{ ucfirst($status) }}</p>
         @if($enrollment->approved_by)
             <p class="mt-1 text-xs text-slate-600">by {{ $approver?->name ?? 'Unknown' }}</p>
         @endif
@@ -176,6 +298,18 @@
             </div>
         </div>
     </div>
+
+    <!-- Draft autosave payload -->
+    @if(!empty($enrollment->draft_data))
+    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <button type="button" onclick="this.parentElement.querySelector('[data-section]').classList.toggle('hidden')" class="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+            <h3 class="text-lg font-semibold text-slate-900">Draft & autosave data (all steps)</h3>
+        </button>
+        <div data-section class="hidden border-t border-slate-200 px-6 py-4">
+            <pre class="max-h-96 overflow-auto rounded-lg bg-slate-900 p-4 text-xs text-emerald-100">{{ json_encode($enrollment->draft_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
+        </div>
+    </div>
+    @endif
 
     <!-- Section 2: Official Details -->
     <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -289,7 +423,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Qualification</p>
-                    <p class="mt-1 text-base font-semibold text-slate-900">{{ $enrollment->qualification ?: $na }}</p>
+                    <p class="mt-1 text-base font-semibold text-slate-900">{{ $qualificationLabel ?: $na }}</p>
                 </div>
                 @if($qualificationYears !== '')
                     <div>
@@ -409,21 +543,26 @@
     </div>
 </div>
 
-<!-- Approval Actions (Admin / Super Admin Only) -->
-@if($isPrivilegedAdmin)
+<!-- Approval Actions (at gate only) -->
+@if($canShowApprovalPanel ?? false)
     <div class="my-8 rounded-2xl border-l-4 border-l-amber-500 bg-amber-50 p-6">
         <h3 class="mb-4 flex items-center gap-2 text-xl font-bold text-amber-900">
             <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-            Approval Decision Required
+            Approval decision
         </h3>
 
-        <div class="grid gap-4 md:grid-cols-2">
-            <button onclick="document.getElementById('approveModal').showModal()" class="rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white shadow transition hover:bg-emerald-700">
-                ✓ Approve Enrollment
+        <div class="grid gap-4 md:grid-cols-3">
+            <button type="button" onclick="document.getElementById('approveModal').showModal()" class="rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white shadow transition hover:bg-emerald-700">
+                Approve enrollment
             </button>
-            <button onclick="document.getElementById('rejectModal').showModal()" class="rounded-lg bg-rose-600 px-6 py-3 font-semibold text-white shadow transition hover:bg-rose-700">
-                ✗ Reject Enrollment
+            <button type="button" onclick="document.getElementById('rejectModal').showModal()" class="rounded-lg bg-rose-600 px-6 py-3 font-semibold text-white shadow transition hover:bg-rose-700">
+                Reject enrollment
             </button>
+            @if($canReturnForCorrection ?? false)
+                <button type="button" onclick="document.getElementById('returnModal').showModal()" class="rounded-lg bg-violet-600 px-6 py-3 font-semibold text-white shadow transition hover:bg-violet-700">
+                    Send back for correction
+                </button>
+            @endif
         </div>
     </div>
 
@@ -466,10 +605,37 @@
             </form>
         </div>
     </dialog>
+
+    <!-- Return for correction -->
+    <dialog id="returnModal" class="rounded-xl border border-slate-200 shadow-2xl backdrop:bg-black/50">
+        <div class="w-full max-w-md p-6">
+            <h2 class="mb-4 text-2xl font-bold text-slate-900">Send back for correction</h2>
+            <form action="{{ route('admin.enrollment.return-for-correction', $enrollment->id) }}" method="post" class="space-y-4">
+                @csrf
+                <div>
+                    <label class="mb-2 block text-sm font-semibold text-slate-900">Instructions for staff <span class="text-red-500">*</span></label>
+                    <textarea name="approval_remarks" class="w-full rounded-lg border border-slate-300 px-4 py-2 focus:border-violet-500 focus:outline-none" rows="4" placeholder="Describe what must be corrected..." required></textarea>
+                </div>
+                <div class="flex gap-3">
+                    <button type="button" onclick="document.getElementById('returnModal').close()" class="flex-1 rounded-lg border border-slate-300 px-4 py-2 font-semibold hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="flex-1 rounded-lg bg-violet-600 px-4 py-2 font-semibold text-white hover:bg-violet-700">Send back</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
 @endif
 
 <!-- Continue to Step 2 (Approved) -->
-@if($canProceedToStep2)
+@if($status === 'approved' && ((auth()->id() === (int) $enrollment->created_by) || $isPrivilegedAdmin) && !$editWorkflowUnlocked)
+    <div class="rounded-lg border-l-4 border-l-slate-400 bg-slate-50 p-6">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h3 class="mb-2 text-xl font-bold text-slate-900">Workflow locked</h3>
+                <p class="text-sm text-slate-700">This approved enrollment is view-only until an administrator verifies an OTP for temporary edit access. Use <strong>Request edit access</strong> above.</p>
+            </div>
+        </div>
+    </div>
+@elseif($canProceedToStep2)
     <div class="rounded-lg border-l-4 border-l-emerald-500 bg-emerald-50 p-6">
         <div class="flex items-center justify-between">
             <div>
@@ -480,4 +646,79 @@
         </div>
     </div>
 @endif
+
+@push('scripts')
+<script>
+(function () {
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+    csrf = csrf ? csrf.getAttribute('content') : '';
+    var headers = {
+        'X-CSRF-TOKEN': csrf,
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/json'
+    };
+
+    function startCountdown(el) {
+        if (!el) return;
+        var ts = parseInt(el.getAttribute('data-expires-ts'), 10);
+        if (!ts || isNaN(ts)) return;
+        function tick() {
+            var left = ts - Math.floor(Date.now() / 1000);
+            if (left <= 0) {
+                el.textContent = 'Expired — refreshing…';
+                window.setTimeout(function () { window.location.reload(); }, 800);
+                return;
+            }
+            var m = Math.floor(left / 60), s = left % 60;
+            el.textContent = m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+        }
+        tick();
+        window.setInterval(tick, 1000);
+    }
+    startCountdown(document.getElementById('editAccessCountdown'));
+
+    var btnReq = document.getElementById('btnRequestEditAccess');
+    if (btnReq) {
+        btnReq.addEventListener('click', function () {
+            btnReq.disabled = true;
+            fetch(@json(route('admin.enrollment.edit-access.request', $enrollment)), {
+                method: 'POST',
+                headers: headers,
+                body: '{}'
+            })
+                .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                .then(function (x) {
+                    alert(x.j.message || (x.ok ? 'OK' : 'Request failed'));
+                    if (x.j.success) window.location.reload();
+                })
+                .catch(function () { alert('Request failed'); })
+                .finally(function () { btnReq.disabled = false; });
+        });
+    }
+
+    var form = document.getElementById('verifyEditAccessForm');
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var input = document.getElementById('verifyEditOtpInput');
+            var msg = document.getElementById('verifyEditAccessMsg');
+            var otp = (input && input.value) ? String(input.value).replace(/\D/g, '').trim() : '';
+            if (msg) msg.textContent = '';
+            fetch(@json(route('admin.enrollment.edit-access.verify', $enrollment)), {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ otp: otp })
+            })
+                .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                .then(function (x) {
+                    if (msg) msg.textContent = (x.j && x.j.message) ? x.j.message : '';
+                    if (x.j && x.j.success) window.location.reload();
+                })
+                .catch(function () { if (msg) msg.textContent = 'Verification failed'; });
+        });
+    }
+})();
+</script>
+@endpush
 @endsection

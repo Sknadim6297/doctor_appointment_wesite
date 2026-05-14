@@ -252,7 +252,7 @@
                             <div class="text-xs text-slate-500">{{ $planLabel }}</div>
                         </td>
                         <td>
-                            <div>{{ $enr->qualification ?? '—' }}</div>
+                            <div>{{ is_array($enr->qualification) ? implode(', ', array_map(fn($p) => is_array($p) ? ($p['name'] ?? '') : (string)$p, $enr->qualification)) : ($enr->qualification ?? '—') }}</div>
                             <div class="text-xs text-slate-500">{{ $enr->medical_registration_no ?? '—' }} / {{ $enr->year_of_reg ?? '—' }}</div>
                         </td>
                         <td>

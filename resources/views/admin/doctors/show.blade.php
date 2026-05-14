@@ -178,7 +178,7 @@
                         <div class="kv-item"><div class="kv-key">Policy No</div><div class="kv-val">{{ $doctor->money_rc_no ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Address</div><div class="kv-val">{{ $doctor->doctor_address ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Date of birth</div><div class="kv-val">{{ optional($doctor->dob)->format('d/m/Y') ?? 'N/A' }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Qualification</div><div class="kv-val">{{ $doctor->qualification ?? 'N/A' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Qualification</div><div class="kv-val">{{ is_array($doctor->qualification) ? implode(', ', array_map(fn($p) => is_array($p) ? ($p['name'] ?? '') : (string)$p, $doctor->qualification)) : ($doctor->qualification ?? 'N/A') }}</div></div>
                     </div>
                     <div>
                         <div class="kv-item"><div class="kv-key">Qualification year</div><div class="kv-val">{{ is_array($doctor->qualification_year) ? implode(', ', $doctor->qualification_year) : ($doctor->qualification_year ?? 'N/A') }}</div></div>

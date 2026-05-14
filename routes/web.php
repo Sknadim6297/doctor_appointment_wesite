@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\NormalPlanController;
 use App\Http\Controllers\Admin\HighRiskPlanController;
 use App\Http\Controllers\Admin\ComboPlanController;
 use App\Http\Controllers\Admin\EnrollmentController;
+use App\Http\Controllers\Admin\EnrollmentEditAccessController;
 use App\Http\Controllers\Admin\InsurancePlanController;
 use App\Http\Controllers\Admin\BulkUploadController;
 use App\Http\Controllers\Admin\DoctorPostController;
@@ -136,6 +137,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Employee-only enrollment tracking page
         Route::get('my-enrollments', [EnrollmentController::class, 'myEnrollments'])->middleware('admin.privilege:enrollment,view')->name('my-enrollments.index');
         Route::get('my-enrollments/{id}', [EnrollmentController::class, 'myEnrollmentDetails'])->middleware('admin.privilege:enrollment,view')->name('my-enrollments.show');
+        Route::get('my-enrollments/{id}/pdf', [EnrollmentController::class, 'myEnrollmentPdf'])->middleware('admin.privilege:enrollment,view')->name('my-enrollments.pdf');
         // NEW ENROLLMENT ENTRY - Protected for assigned sub-admins only
         Route::get('enrollment/create', [EnrollmentController::class, 'create'])
             ->middleware(['admin.privilege:enrollment,edit', 'sub-admin.access-control:enrollment-entry'])
@@ -143,12 +145,29 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('enrollment', [EnrollmentController::class, 'store'])
             ->middleware(['admin.privilege:enrollment,edit', 'sub-admin.access-control:enrollment-entry'])
             ->name('enrollment.store');
+        Route::post('enrollment/autosave', [EnrollmentController::class, 'autosave'])
+            ->middleware('admin.privilege:enrollment,edit')
+            ->name('enrollment.autosave');
+        Route::post('enrollment/{enrollment}/edit-access/request', [EnrollmentEditAccessController::class, 'request'])
+            ->middleware('admin.privilege:enrollment,view')
+            ->name('enrollment.edit-access.request');
+        Route::post('enrollment/{enrollment}/edit-access/verify', [EnrollmentEditAccessController::class, 'verify'])
+            ->middleware('admin.privilege:enrollment,view')
+            ->name('enrollment.edit-access.verify');
+        Route::get('enrollment/{enrollment}/edit-access/status', [EnrollmentEditAccessController::class, 'status'])
+            ->middleware('admin.privilege:enrollment,view')
+            ->name('enrollment.edit-access.status');
+        Route::get('enrollment/{enrollment}/resume', [EnrollmentController::class, 'resume'])
+            ->middleware('admin.privilege:enrollment,edit')
+            ->name('enrollment.resume');
         // Edit / Update enrollment (doctor)
         Route::get('enrollment/{enrollment}/edit', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.edit');
         Route::put('enrollment/{enrollment}', [EnrollmentController::class, 'update'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.update');
         Route::post('index.php/doctor_list/doctor_edit_action/{doctor}', [EnrollmentController::class, 'updateLegacy'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-update');
         Route::get('enrollment/{enrollment}/step-2', [EnrollmentController::class, 'stepTwo'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.step2');
-        Route::get('enrollment/{enrollment}/step-3', [EnrollmentController::class, 'stepThree'])->middleware('admin.privilege:posts,edit')->name('enrollment.step3');
+        Route::get('enrollment/{enrollment}/step-2/pdf', [EnrollmentController::class, 'downloadStepTwoPdf'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.step2.pdf');
+        Route::get('enrollment/{enrollment}/step-3', [EnrollmentController::class, 'stepThree'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.step3');
+        Route::get('enrollment/{enrollment}/step-4', [EnrollmentController::class, 'stepFour'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.step4');
         Route::get('enrollment/{enrollment}/success', [EnrollmentController::class, 'success'])->middleware('admin.privilege:enrollment,view')->name('enrollment.success');
 
         // Approval workflow routes - use permission middleware instead of hardcoded super_admin role
@@ -156,8 +175,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('enrollments/pending', [EnrollmentController::class, 'pending'])->name('enrollment.pending');
             Route::post('enrollments/{id}/approve', [EnrollmentController::class, 'approve'])->name('enrollment.approve');
             Route::post('enrollments/{id}/reject', [EnrollmentController::class, 'reject'])->name('enrollment.reject');
+            Route::post('enrollments/{id}/return-for-correction', [EnrollmentController::class, 'returnForCorrection'])->name('enrollment.return-for-correction');
         });
-        Route::get('enrollments/{id}/details', [EnrollmentController::class, 'showDetails'])->name('enrollment.details');
+        Route::get('enrollments/monitoring/{bucket?}', [EnrollmentController::class, 'monitoring'])
+            ->middleware('admin.privilege:enrollment,view')
+            ->name('enrollment.monitoring');
+        Route::get('enrollments/{id}/details', [EnrollmentController::class, 'showDetails'])
+            ->middleware('admin.privilege:enrollment,view')
+            ->name('enrollment.details');
 
         // Doctor Management
         Route::get('doctors', [DoctorController::class, 'index'])->middleware('admin.privilege:doctors,view')->name('doctors.index');

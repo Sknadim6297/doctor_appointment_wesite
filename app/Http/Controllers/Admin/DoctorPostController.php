@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\DoctorPost;
 use App\Models\Enrollment;
+use App\Models\PolicyReceipt;
+use App\Services\ActivityLogService;
+use App\Support\EnrollmentWorkflow;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -12,6 +15,11 @@ use Illuminate\Support\Facades\Auth;
 
 class DoctorPostController extends Controller
 {
+    public function __construct(
+        private readonly ActivityLogService $activityLogService,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $search = trim((string) $request->query('search'));
@@ -31,7 +39,7 @@ class DoctorPostController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $doctors = Enrollment::select('id', 'doctor_name', 'money_rc_no')->orderBy('doctor_name')->get();
+        $doctors = Enrollment::query()->productionReady()->select('id', 'doctor_name', 'money_rc_no')->orderBy('doctor_name')->get();
 
         return view('admin.posts.index', compact('posts', 'doctors', 'perPage', 'allowedPerPage', 'search'));
     }
@@ -85,7 +93,14 @@ class DoctorPostController extends Controller
             'post_doc_file' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240',
         ]);
 
-        $enrollment = Enrollment::findOrFail($data['doctor']);
+        $finalize = (bool) $request->input('finalize_enrollment_flow', false);
+
+        $enrollmentQuery = Enrollment::query();
+        if (!$finalize) {
+            $enrollmentQuery->productionReady();
+        }
+
+        $enrollment = $enrollmentQuery->findOrFail($data['doctor']);
         $isConsignment = (int) ($data['doctype'] ?? 0) === 7;
 
         if ($isConsignment) {
@@ -113,6 +128,31 @@ class DoctorPostController extends Controller
             'created_by' => Auth::id(),
         ]);
 
+        if ($finalize) {
+            PolicyReceipt::query()
+                ->where('enrollment_id', $enrollment->id)
+                ->where('workflow_status', PolicyReceipt::STATUS_DRAFT)
+                ->update(['workflow_status' => PolicyReceipt::STATUS_COMPLETED]);
+
+            $enrollment->forceFill([
+                'workflow_status' => EnrollmentWorkflow::COMPLETED,
+                'is_step_incomplete' => false,
+                'current_step' => 4,
+                'completed_steps' => [1, 2, 3, 4],
+                'last_activity_at' => now(),
+            ])->save();
+
+            $this->activityLogService->log(
+                $request,
+                'enrollment',
+                'workflow_completed',
+                $enrollment,
+                Auth::user(),
+                'Completed enrollment workflow (Step 4 post submission).',
+                ['enrollment_id' => $enrollment->id]
+            );
+        }
+
         if ($request->filled('return_to')) {
             return redirect()->to($request->input('return_to'))->with('success', 'New post added successfully.');
         }
@@ -134,7 +174,7 @@ class DoctorPostController extends Controller
             'post_doc_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240',
         ]);
 
-        $enrollment = Enrollment::findOrFail($data['doctor']);
+        $enrollment = Enrollment::query()->productionReady()->findOrFail($data['doctor']);
 
         $filePath = $post->post_doc_file;
         if ($request->hasFile('post_doc_file')) {

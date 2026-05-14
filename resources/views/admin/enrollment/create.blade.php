@@ -37,6 +37,8 @@
 
     <form method="POST" action="{{ $submitRoute ?? ($enrollment ? route('admin.enrollment.update', optional($enrollment)->id) : route('admin.enrollment.store')) }}" id="enrollmentForm" novalidate>
         @csrf
+        <input type="hidden" name="workflow_step" value="1">
+        <input type="hidden" name="workflow_enrollment_id" id="workflow_enrollment_id" value="{{ old('workflow_enrollment_id', optional($enrollment)->id ?? '') }}">
         @if($enrollment)
             @method('PUT')
         @endif
@@ -211,27 +213,60 @@
                     @error('dob')<p class="form-error">{{ $message }}</p>@enderror
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Qualification <span class="text-red-500">*</span></label>
-                          <input type="text" name="qualification" id="qualification"
-                              value="{{ old('qualification', optional($enrollment)->qualification ?? '') }}"
-                           class="form-input @error('qualification') border-red-400 @enderror"
-                           placeholder="e.g. MBBS, MD">
-                    @error('qualification')<p class="form-error">{{ $message }}</p>@enderror
-                </div>
+                <div class="form-group lg:col-span-2">
+                    <label class="form-label">Qualifications</label>
+                    @php
+                        // Build initial qualification rows from old input or enrollment
+                        $qualNames = old('qualification_names');
+                        $qualYears = old('qualification_years');
+                        if (empty($qualNames) && !empty($enrollment)) {
+                            if (is_array($enrollment->qualification)) {
+                                $qualNames = array_map(fn($p) => $p['name'] ?? '', $enrollment->qualification);
+                                $qualYears = array_map(fn($p) => $p['year'] ?? '', $enrollment->qualification);
+                            } elseif (!empty($enrollment->qualification)) {
+                                // legacy: treat as single qualification string
+                                $qualNames = [$enrollment->qualification];
+                                $qualYears = (array) ($enrollment->qualification_year ?? []);
+                            }
+                        }
+                        $qualNames = (array) $qualNames;
+                        $qualYears = (array) $qualYears;
+                    @endphp
 
-                <div class="form-group">
-                    <label class="form-label">Qualification Year(s) <span class="text-red-500">*</span></label>
-                    <select name="qualification_year[]" id="qualification_year"
-                            class="form-input @error('qualification_year') border-red-400 @enderror"
-                            multiple size="3">
-                        <option value="0">Select year(s)</option>
-                        @foreach($years as $yr)
-                            <option value="{{ $yr }}" {{ in_array($yr, (array) old('qualification_year', optional($enrollment)->qualification_year ?? [])) ? 'selected' : '' }}>{{ $yr }}</option>
-                        @endforeach
-                    </select>
-                    <p class="form-helper">Hold Ctrl / Cmd to select multiple years</p>
-                    @error('qualification_year')<p class="form-error">{{ $message }}</p>@enderror
+                    <div id="qualifications_container">
+                        @if(count($qualNames) > 0)
+                            @foreach($qualNames as $i => $qname)
+                                <div class="qualification-row mb-3 flex gap-3 items-start">
+                                    <input type="text" name="qualification_names[]" value="{{ old('qualification_names.'.$i, $qname) }}" class="form-input" placeholder="Qualification (e.g. MBBS)">
+                                    <select name="qualification_years[]" class="form-input" style="width:130px;">
+                                        <option value="">Year</option>
+                                        @foreach($years as $yr)
+                                            <option value="{{ $yr }}" {{ (string) (old('qualification_years.'.$i, $qualYears[$i] ?? '')) === (string) $yr ? 'selected' : '' }}>{{ $yr }}</option>
+                                        @endforeach
+                                    </select>
+                                    <button type="button" class="btn btn-default" onclick="removeQualificationRow(this)">Remove</button>
+                                </div>
+                            @endforeach
+                        @else
+                            <div class="qualification-row mb-3 flex gap-3 items-start">
+                                <input type="text" name="qualification_names[]" class="form-input" placeholder="Qualification (e.g. MBBS)">
+                                <select name="qualification_years[]" class="form-input" style="width:130px;">
+                                    <option value="">Year</option>
+                                    @foreach($years as $yr)
+                                        <option value="{{ $yr }}">{{ $yr }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" class="btn btn-default" onclick="removeQualificationRow(this)">Remove</button>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="mt-2">
+                        <button type="button" id="addQualificationBtn" class="btn btn-default" onclick="addQualificationRow()">Add More</button>
+                    </div>
+
+                    @error('qualification_names')<p class="form-error">{{ $message }}</p>@enderror
+                    @error('qualification_years')<p class="form-error">{{ $message }}</p>@enderror
                 </div>
 
                 <div class="form-group">
@@ -316,7 +351,7 @@
                             class="form-input @error('payment_mode') border-red-400 @enderror"
                             @change="onPaymentModeChange($event.target.value)">
                         <option value="0">--- Select Payment Mode ---</option>
-                        @foreach(['Monthly EMI','One Year','Two Year','Three Year','Four Year','Five Year'] as $mode)
+                        @foreach(['One Year','Two Year','Three Year','Four Year','Five Year'] as $mode)
                             <option value="{{ $mode }}" {{ old('payment_mode', optional($enrollment)->payment_mode ?? '') === $mode ? 'selected' : '' }}>{{ $mode }}</option>
                         @endforeach
                     </select>
@@ -360,8 +395,9 @@
                     <label class="form-label">Medeforum Amount <span class="text-red-500">*</span></label>
                           <input type="text" name="payment_amount" id="payment_amount"
                               value="{{ old('payment_amount', optional($enrollment)->payment_amount ?? '') }}"
-                           class="form-input @error('payment_amount') border-red-400 @enderror"
-                           placeholder="0.00">
+                           class="form-input bg-gray-100 @error('payment_amount') border-red-400 @enderror"
+                           placeholder="Auto-calculated"
+                           readonly>
                     @error('payment_amount')<p class="form-error">{{ $message }}</p>@enderror
                 </div>
 
@@ -661,10 +697,12 @@ function enrollmentForm(config) {
                 serviceAmount.addEventListener('input', () => this.recalcTotal());
             }
 
-            const paymentAmount = document.getElementById('payment_amount');
-            if (paymentAmount) {
-                paymentAmount.addEventListener('input', () => this.recalcTotal());
+            const totalAmount = document.getElementById('total_amount');
+            if (totalAmount) {
+                totalAmount.addEventListener('input', () => this.recalcTotal());
             }
+
+            this.recalcTotal();
         },
 
         syncHiddenNames() {
@@ -795,7 +833,11 @@ function enrollmentForm(config) {
             this.selectedPlan = Number(planId);
             document.getElementById('plan_name').value = planName;
             document.getElementById('coverage').innerHTML = '<option value="0">--- Select Coverage ---</option>';
+            document.getElementById('total_amount').value = '';
+            document.getElementById('service_amount').value = '';
             document.getElementById('payment_amount').value = '';
+            this.showTotalAmount = false;
+            this.showServiceAmount = false;
             this.loadCoverage();
         },
 
@@ -846,7 +888,7 @@ function enrollmentForm(config) {
 
         onCoverageChange(covId, amount) {
             if (amount) {
-                document.getElementById('payment_amount').value = parseFloat(amount).toFixed(2);
+                document.getElementById('total_amount').value = parseFloat(amount).toFixed(2);
                 this.showTotalAmount = true;
                 this.showServiceAmount = true;
                 this.recalcTotal();
@@ -854,10 +896,13 @@ function enrollmentForm(config) {
         },
 
         recalcTotal() {
-            const med  = parseFloat(document.getElementById('payment_amount').value) || 0;
-            const svc  = parseFloat(document.getElementById('service_amount')?.value) || 0;
-            const tot  = document.getElementById('total_amount');
-            if (tot) tot.value = (med + svc).toFixed(2);
+            const total = parseFloat(document.getElementById('total_amount')?.value) || 0;
+            const insurance = parseFloat(document.getElementById('service_amount')?.value) || 0;
+            const medeforum = document.getElementById('payment_amount');
+
+            if (medeforum) {
+                medeforum.value = Math.max(total - insurance, 0).toFixed(2);
+            }
         },
     };
 }
@@ -866,10 +911,126 @@ function enrollmentForm(config) {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
+    function addQualificationRow() {
+        const container = document.getElementById('qualifications_container');
+        if (!container) return;
+
+        const row = document.createElement('div');
+        row.className = 'qualification-row mb-3 flex gap-3 items-start';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.name = 'qualification_names[]';
+        input.className = 'form-input';
+        input.placeholder = 'Qualification (e.g. MBBS)';
+
+        const select = document.createElement('select');
+        select.name = 'qualification_years[]';
+        select.className = 'form-input';
+        select.style.width = '130px';
+
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.textContent = 'Year';
+        select.appendChild(emptyOpt);
+
+        // populate years from server-rendered list
+        const years = @json($years);
+        years.forEach(y => {
+            const opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            select.appendChild(opt);
+        });
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-default';
+        btn.textContent = 'Remove';
+        btn.onclick = function () { removeQualificationRow(btn); };
+
+        row.appendChild(input);
+        row.appendChild(select);
+        row.appendChild(btn);
+
+        container.appendChild(row);
+    }
+
+    function removeQualificationRow(btn) {
+        const row = btn.closest('.qualification-row');
+        if (!row) return;
+        const container = document.getElementById('qualifications_container');
+        // if only one row, clear inputs instead of removing
+        if (container.querySelectorAll('.qualification-row').length <= 1) {
+            row.querySelectorAll('input, select').forEach(el => el.value = '');
+            return;
+        }
+        row.remove();
+    }
+</script>
+<script>
     if (typeof flatpickr !== 'undefined') {
         document.querySelectorAll('.datepicker').forEach(function (input) {
             flatpickr(input, { dateFormat: 'd/m/Y' });
         });
     }
+
+    (function () {
+        const form = document.getElementById('enrollmentForm');
+        const workflowField = document.getElementById('workflow_enrollment_id');
+        const autosaveUrl = @json(route('admin.enrollment.autosave'));
+        let autosaveTimer = null;
+        let autosaveQueued = false;
+        let autosaveInFlight = false;
+
+        if (!form || !workflowField) {
+            return;
+        }
+
+        const scheduleAutosave = function () {
+            autosaveQueued = true;
+            if (autosaveTimer) {
+                clearTimeout(autosaveTimer);
+            }
+
+            autosaveTimer = setTimeout(runAutosave, 2500);
+        };
+
+        const runAutosave = function () {
+            if (!autosaveQueued || autosaveInFlight) {
+                return;
+            }
+
+            autosaveQueued = false;
+            autosaveInFlight = true;
+
+            const payload = new FormData(form);
+            payload.set('workflow_step', '1');
+            payload.set('workflow_enrollment_id', workflowField.value || '');
+
+            fetch(autosaveUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': form.querySelector('input[name="_token"]')?.value || '',
+                    'Accept': 'application/json',
+                },
+                body: payload,
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.success && data.enrollment_id) {
+                        workflowField.value = data.enrollment_id;
+                    }
+                })
+                .catch(() => {})
+                .finally(() => {
+                    autosaveInFlight = false;
+                });
+        };
+
+        form.addEventListener('input', scheduleAutosave, true);
+        form.addEventListener('change', scheduleAutosave, true);
+        setInterval(runAutosave, 25000);
+    })();
 </script>
 @endsection

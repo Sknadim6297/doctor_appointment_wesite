@@ -42,7 +42,7 @@ class DoctorController extends Controller
             metadata: $request->only(['search', 'specialization_id', 'plan', 'renewal_status'])
         );
 
-        $query = Enrollment::query()->with('specialization')->orderByDesc('created_at');
+        $query = Enrollment::query()->productionReady()->with('specialization')->orderByDesc('created_at');
 
         // Filter by search term (name, email, phone, membership)
         if (!empty($request->search)) {
@@ -105,6 +105,7 @@ class DoctorController extends Controller
         );
 
         $memberships = Enrollment::query()
+            ->productionReady()
             ->select('id', 'doctor_name', 'mobile1', 'customer_id_no')
             ->whereNotNull('customer_id_no')
             ->where('customer_id_no', '!=', '')
@@ -233,7 +234,7 @@ class DoctorController extends Controller
      */
     public function show($id)
     {
-        $doctor = Enrollment::with(['specialization', 'creator'])->findOrFail($id);
+        $doctor = Enrollment::query()->productionReady()->with(['specialization', 'creator'])->findOrFail($id);
 
         $this->activityLogService->log(
             request(),
@@ -340,6 +341,7 @@ class DoctorController extends Controller
         );
 
         $query = Enrollment::query()
+            ->productionReady()
             ->with('specialization')
             ->where(function ($q) {
                 $q->whereNull('aadhar_card_no')
@@ -379,7 +381,7 @@ class DoctorController extends Controller
      */
     public function csvReport(Request $request)
     {
-        $query = Enrollment::query()->with('specialization');
+        $query = Enrollment::query()->productionReady()->with('specialization');
 
         // Apply same filters as index
         if (!empty($request->search)) {
@@ -481,6 +483,7 @@ class DoctorController extends Controller
         ];
         $years = range((int) date('Y') + 10, 2000);
         $doctors = Enrollment::query()
+            ->productionReady()
             ->select('id', 'doctor_name', 'customer_id_no', 'specialization_id', 'money_rc_no')
             ->orderBy('doctor_name')
             ->get();
@@ -536,6 +539,7 @@ class DoctorController extends Controller
         $years = range((int) date('Y') + 10, 2000);
 
         $doctors = Enrollment::query()
+            ->productionReady()
             ->select('id', 'doctor_name', 'customer_id_no', 'specialization_id', 'money_rc_no')
             ->orderBy('doctor_name')
             ->get();
@@ -625,6 +629,7 @@ class DoctorController extends Controller
         $years = range((int) date('Y') + 10, 2000);
 
         $doctors = Enrollment::query()
+            ->productionReady()
             ->select('id', 'doctor_name', 'customer_id_no', 'specialization_id', 'money_rc_no')
             ->orderBy('doctor_name')
             ->get();
@@ -708,7 +713,7 @@ class DoctorController extends Controller
             'remarks' => 'nullable|string|max:1000',
         ]);
 
-        $doctor = Enrollment::query()->findOrFail($data['doctor']);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($data['doctor']);
 
         $filePath = null;
         if ($request->hasFile('chequeFile')) {
@@ -754,7 +759,7 @@ class DoctorController extends Controller
             'remarks' => 'nullable|string|max:1000',
         ]);
 
-        $doctor = Enrollment::query()->findOrFail($data['doctor']);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($data['doctor']);
 
         if ($request->hasFile('chequeFile')) {
             if ($receipt->cheque_file) {
@@ -827,6 +832,7 @@ class DoctorController extends Controller
         $doctorId = (int) $request->input('doctor', $request->input('doctor_id', 0));
 
         $doctor = Enrollment::query()
+            ->productionReady()
             ->select('id', 'doctor_name', 'customer_id_no', 'money_rc_no', 'specialization_id')
             ->findOrFail($doctorId);
 
@@ -868,7 +874,7 @@ class DoctorController extends Controller
             'money_remarks' => 'nullable|string|max:255',
         ]);
 
-        $doctor = Enrollment::findOrFail($validated['doctor']);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($validated['doctor']);
 
         $moneyReceiptNo = $validated['money_reciept_no'];
         if (!empty($validated['money_reciept_year'])) {
@@ -934,9 +940,10 @@ class DoctorController extends Controller
      */
     public function receiptsEdit($receiptId)
     {
-        $receipt = Enrollment::query()->findOrFail($receiptId);
+        $receipt = Enrollment::query()->productionReady()->findOrFail($receiptId);
 
         $doctors = Enrollment::query()
+            ->productionReady()
             ->select('id', 'doctor_name', 'customer_id_no', 'specialization_id', 'money_rc_no')
             ->orderBy('doctor_name')
             ->get();
@@ -952,7 +959,7 @@ class DoctorController extends Controller
      */
     public function receiptsUpdate(Request $request, $receiptId)
     {
-        $receipt = Enrollment::query()->findOrFail($receiptId);
+        $receipt = Enrollment::query()->productionReady()->findOrFail($receiptId);
 
         $validated = $request->validate([
             'doctor' => 'required|integer|exists:enrollments,id',
@@ -974,7 +981,7 @@ class DoctorController extends Controller
             'money_remarks' => 'nullable|string|max:255',
         ]);
 
-        $doctor = Enrollment::query()->findOrFail($validated['doctor']);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($validated['doctor']);
 
         $moneyReceiptNo = $validated['money_reciept_no'];
         if (!empty($validated['money_reciept_year'])) {
@@ -1054,7 +1061,7 @@ class DoctorController extends Controller
      */
     public function receiptsShowJson($receiptId): JsonResponse
     {
-        $receipt = Enrollment::query()->findOrFail($receiptId);
+        $receipt = Enrollment::query()->productionReady()->findOrFail($receiptId);
 
         [$receiptNoBase, $receiptNoYear] = $this->extractMoneyReceiptParts($receipt->money_rc_no);
 
@@ -1097,7 +1104,7 @@ class DoctorController extends Controller
      */
     public function receiptsView($receiptId)
     {
-        $receipt = Enrollment::query()->with('specialization')->findOrFail($receiptId);
+        $receipt = Enrollment::query()->productionReady()->with('specialization')->findOrFail($receiptId);
 
         [$receiptNoBase, $receiptNoYear] = $this->extractMoneyReceiptParts($receipt->money_rc_no);
 
@@ -1190,6 +1197,7 @@ class DoctorController extends Controller
         $searchText = trim((string) $request->input('search', ''));
 
         $query = Enrollment::query()
+            ->productionReady()
             ->with('specialization')
             ->whereNotNull('money_rc_no')
             ->where('money_rc_no', '!=', '')
@@ -1273,6 +1281,7 @@ class DoctorController extends Controller
         $selectedYear = (string) $request->input('search_year', '');
 
         $query = Enrollment::query()
+            ->productionReady()
             ->with('specialization')
             ->whereNotNull('money_rc_no')
             ->where('money_rc_no', '!=', '')
@@ -1306,7 +1315,7 @@ class DoctorController extends Controller
      */
     public function toggleAutoEmail(Request $request, $id): JsonResponse
     {
-        $doctor = Enrollment::findOrFail($id);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($id);
         $newStatus = $request->boolean('enabled');
         $doctor->update(['bond_to_mail' => $newStatus]);
 
@@ -1332,7 +1341,7 @@ class DoctorController extends Controller
      */
     public function toggleAutoSms(Request $request, $id): JsonResponse
     {
-        $doctor = Enrollment::findOrFail($id);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($id);
         $newStatus = $request->boolean('enabled');
         // Assuming there's a field to track auto SMS - adjust as needed
         // For now, we'll use a similar flag or create one in migration
@@ -1360,7 +1369,7 @@ class DoctorController extends Controller
      */
     public function sendMail(Request $request, $id): JsonResponse
     {
-        $doctor = Enrollment::findOrFail($id);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($id);
 
         // TODO: Implement email sending logic
         // Mail::to($doctor->doctor_email)->send(new DoctorNotificationMail($doctor));
@@ -1376,7 +1385,7 @@ class DoctorController extends Controller
      */
     public function sendSms(Request $request, $id): JsonResponse
     {
-        $doctor = Enrollment::findOrFail($id);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($id);
 
         // TODO: Implement SMS sending logic
         // SMS::send($doctor->mobile1, "Your renewal notification message");
@@ -1392,7 +1401,7 @@ class DoctorController extends Controller
      */
     public function resendBond(Request $request, $id): JsonResponse
     {
-        $doctor = Enrollment::findOrFail($id);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($id);
 
         // TODO: Implement bond document sending logic
         // Mail::to($doctor->doctor_email)->send(new BondDocumentMail($doctor));
@@ -1408,7 +1417,7 @@ class DoctorController extends Controller
      */
     public function resendMoneyReceipt(Request $request, $id): JsonResponse
     {
-        $doctor = Enrollment::findOrFail($id);
+        $doctor = Enrollment::query()->productionReady()->findOrFail($id);
 
         // TODO: Implement money receipt sending logic
         // Mail::to($doctor->doctor_email)->send(new MoneyReceiptMail($doctor));

@@ -16,6 +16,16 @@ class PolicyReceiptController extends Controller
         $search = $request->query('search');
 
         $policies = PolicyReceipt::with('enrollment')
+                ->where(function ($q) {
+                $q->where('workflow_status', PolicyReceipt::STATUS_COMPLETED)
+                    ->orWhereNull('workflow_status');
+            })
+                ->where(function ($q) {
+                    $q->whereNull('enrollment_id')
+                        ->orWhereHas('enrollment', function ($enrollmentQuery) {
+                            $enrollmentQuery->productionReady();
+                        });
+                })
             ->when($search, function ($q) use ($search) {
                 $q->where('policy_no', 'like', "%{$search}%")
                   ->orWhere('doctor_name', 'like', "%{$search}%");
@@ -25,6 +35,7 @@ class PolicyReceiptController extends Controller
             ->withQueryString();
 
         $doctors = Enrollment::query()
+            ->productionReady()
             ->select('id', 'doctor_name', 'money_rc_no', 'customer_id_no')
             ->orderBy('doctor_name')
             ->get();
@@ -38,6 +49,16 @@ class PolicyReceiptController extends Controller
         $searchText = $request->query('search');
 
         $policies = PolicyReceipt::query()
+                ->where(function ($q) {
+                $q->where('workflow_status', PolicyReceipt::STATUS_COMPLETED)
+                    ->orWhereNull('workflow_status');
+            })
+                ->where(function ($q) {
+                    $q->whereNull('enrollment_id')
+                        ->orWhereHas('enrollment', function ($enrollmentQuery) {
+                            $enrollmentQuery->productionReady();
+                        });
+                })
             ->when($searchYear > 0, function ($q) use ($searchYear) {
                 $q->where(function ($w) use ($searchYear) {
                     $w->whereYear('receive_date', $searchYear)
@@ -64,11 +85,12 @@ class PolicyReceiptController extends Controller
         $doctorId = (int) request()->query('doctor', 0);
 
         $doctors = Enrollment::query()
+            ->productionReady()
             ->select('id', 'doctor_name', 'money_rc_no', 'customer_id_no')
             ->orderBy('doctor_name')
             ->get();
 
-        $selectedDoctor = $doctorId > 0 ? Enrollment::find($doctorId) : null;
+        $selectedDoctor = $doctorId > 0 ? Enrollment::query()->productionReady()->find($doctorId) : null;
         $submitRoute = request()->routeIs('admin.policy-receipt.legacy-create') && $doctorId > 0
             ? route('admin.policy-receipt.legacy-store', $doctorId)
             : route('admin.policy-receipt.store');
@@ -85,24 +107,24 @@ class PolicyReceiptController extends Controller
 
     public function storeForEnrollment(Request $request, Enrollment $enrollment)
     {
-        $policy = $this->persistPolicyReceipt($request, $enrollment);
+        $policy = $this->persistPolicyReceipt($request, $enrollment, PolicyReceipt::STATUS_DRAFT);
 
         session()->flash('success', 'Policy received entry added.');
 
-        // Keep the enrollment workflow intact: return to step 3 preview where receipts are shown
-        return redirect()->route('admin.enrollment.step3', $enrollment);
+        // Continue workflow to Step 4 after Step 3 policy receipt submission.
+        return redirect()->route('admin.enrollment.step4', $enrollment);
     }
 
     public function storeForDoctor(Request $request, $doctorId)
     {
-        $enrollment = Enrollment::findOrFail($doctorId);
+        $enrollment = Enrollment::query()->productionReady()->findOrFail($doctorId);
 
-        $policy = $this->persistPolicyReceipt($request, $enrollment);
+        $policy = $this->persistPolicyReceipt($request, $enrollment, PolicyReceipt::STATUS_DRAFT);
 
         session()->flash('success', 'Policy received entry added.');
 
-        // Return to enrollment step3 where the policy receipts are listed for this enrollment
-        return redirect()->route('admin.enrollment.step3', $enrollment);
+        // Continue workflow to Step 4 after Step 3 policy receipt submission.
+        return redirect()->route('admin.enrollment.step4', $enrollment);
     }
 
     public function store(Request $request)
@@ -119,8 +141,8 @@ class PolicyReceiptController extends Controller
 
         // If a doctor/enrollment was provided, reuse persistPolicyReceipt to keep logic consistent
         if (!empty($data['doctor'])) {
-            $enrollment = Enrollment::findOrFail($data['doctor']);
-            $this->persistPolicyReceipt($request, $enrollment);
+            $enrollment = Enrollment::query()->productionReady()->findOrFail($data['doctor']);
+                $this->persistPolicyReceipt($request, $enrollment, PolicyReceipt::STATUS_COMPLETED);
             session()->flash('success', 'Policy received entry added.');
             return redirect()->route('admin.policy-receipt.index');
         }
@@ -157,6 +179,7 @@ class PolicyReceiptController extends Controller
             'policy_start_date' => $policyStartDate,
             'policy_end_date' => $policyEndDate,
             'policy_file' => $filePath,
+            'workflow_status' => PolicyReceipt::STATUS_COMPLETED,
         ]);
 
         session()->flash('success', 'Policy received entry added.');
@@ -172,7 +195,7 @@ class PolicyReceiptController extends Controller
     public function edit($id)
     {
         $policy = PolicyReceipt::findOrFail($id);
-        $doctors = Enrollment::select('id', 'doctor_name', 'money_rc_no')->orderBy('doctor_name')->get();
+        $doctors = Enrollment::query()->productionReady()->select('id', 'doctor_name', 'money_rc_no')->orderBy('doctor_name')->get();
         return view('admin.policy_receipt.edit', compact('policy', 'doctors'));
     }
 
@@ -191,7 +214,7 @@ class PolicyReceiptController extends Controller
         $enrollment = null;
         $doctorName = $policy->doctor_name;
         if (!empty($data['doctor'])) {
-            $enrollment = Enrollment::find($data['doctor']);
+            $enrollment = Enrollment::query()->productionReady()->find($data['doctor']);
             $doctorName = $enrollment?->doctor_name ?? $doctorName;
         }
 
@@ -245,7 +268,7 @@ class PolicyReceiptController extends Controller
         return redirect()->route('admin.policy-receipt.index');
     }
 
-    private function persistPolicyReceipt(Request $request, Enrollment $enrollment): PolicyReceipt
+    private function persistPolicyReceipt(Request $request, Enrollment $enrollment, string $workflowStatus = PolicyReceipt::STATUS_COMPLETED): PolicyReceipt
     {
         $data = $request->validate([
             'policy_no' => 'nullable|string|max:255',
@@ -286,6 +309,7 @@ class PolicyReceiptController extends Controller
             'policy_start_date' => $policyStartDate,
             'policy_end_date' => $policyEndDate,
             'policy_file' => $filePath,
+            'workflow_status' => $workflowStatus,
         ]);
 
         // Synchronize important dates back to the enrollment so main listing shows up-to-date data.

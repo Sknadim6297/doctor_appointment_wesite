@@ -21,7 +21,7 @@ return new class extends Migration
             $table->boolean('is_allowed')->default(false);
             $table->timestamps();
 
-            $table->unique(['user_id', 'page_key']);
+            $table->unique(['user_id', 'group_key', 'page_key', 'action_key']);
             $table->index(['user_id', 'group_key']);
         });
     }

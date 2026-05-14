@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Support\EnrollmentWorkflow;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 
 class Enrollment extends Model
@@ -62,10 +65,17 @@ class Enrollment extends Model
         'approved_at',
         'approval_remarks',
         'rejection_reason',
+        'current_step',
+        'workflow_status',
+        'is_step_incomplete',
+        'last_activity_at',
+        'completed_steps',
+        'draft_data',
     ];
 
     protected $casts = [
         'qualification_year' => 'array',
+        'qualification'      => 'array',
         'dob'                => 'date',
         'payment_cash_date'  => 'date',
         'renewal_date'       => 'date',
@@ -76,10 +86,16 @@ class Enrollment extends Model
         'auto_sms_enabled'   => 'boolean',
         'hide_from_call_sheet' => 'boolean',
         'call_sheet_specialization_ids' => 'array',
+        'current_step'       => 'integer',
+        'is_step_incomplete' => 'boolean',
+        'last_activity_at'   => 'datetime',
+        'completed_steps'    => 'array',
+        'draft_data'         => 'array',
         'service_amount'     => 'decimal:2',
         'payment_amount'     => 'decimal:2',
         'total_amount'       => 'decimal:2',
         'coverage'           => 'decimal:2',
+        'workflow_status'    => 'string',
     ];
 
     public function specialization()
@@ -102,6 +118,14 @@ class Enrollment extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
+    public function scopeProductionReady(Builder $query): Builder
+    {
+        return $query
+            ->where('workflow_status', 'completed')
+            ->where('is_step_incomplete', false)
+            ->whereNotNull('approved_at');
+    }
+
     public function policyReceipts()
     {
         return $this->hasMany(\App\Models\PolicyReceipt::class, 'enrollment_id');
@@ -110,6 +134,11 @@ class Enrollment extends Model
     public function doctorDocuments()
     {
         return $this->hasMany(DoctorDocument::class);
+    }
+
+    public function editAccessSessions(): HasMany
+    {
+        return $this->hasMany(EnrollmentEditAccessSession::class);
     }
 
     public function isPendingApproval(): bool
@@ -125,5 +154,15 @@ class Enrollment extends Model
     public function isRejected(): bool
     {
         return $this->status === 'rejected';
+    }
+
+    public function normalizedWorkflowStatus(): string
+    {
+        return EnrollmentWorkflow::normalize($this->workflow_status);
+    }
+
+    public function workflowStatusLabel(): string
+    {
+        return EnrollmentWorkflow::label($this->workflow_status);
     }
 }

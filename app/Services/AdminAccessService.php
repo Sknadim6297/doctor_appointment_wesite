@@ -162,11 +162,11 @@ class AdminAccessService
                         $privilege = AdminPrivilege::query()->firstOrCreate(
                             [
                                 'user_id' => $user->id,
+                                'group_key' => (string) $groupKey,
                                 'page_key' => $pageKey,
                                 'action_key' => $actionKey,
                             ],
                             [
-                                'group_key' => (string) $groupKey,
                                 'group_title' => $groupTitle,
                                 'page_title' => $pageTitle,
                                 'action_title' => Str::headline($actionKey),
@@ -545,7 +545,7 @@ class AdminAccessService
         return array_values(array_filter(array_map(function (array $node) use ($user): ?array {
             if (($node['key'] ?? null) === 'doctor-management') {
                 $node['children'] = array_values(array_filter(array_map(function (array $child): ?array {
-                    if (in_array(($child['key'] ?? null), ['enrollment-entry', 'pending-approvals'], true)) {
+                    if (in_array(($child['key'] ?? null), ['pending-approvals'], true)) {
                         return null;
                     }
 

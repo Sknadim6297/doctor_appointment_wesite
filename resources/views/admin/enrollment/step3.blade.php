@@ -1,15 +1,20 @@
 @extends('admin.layouts.app')
 
-@section('title', 'Submit Post')
+@section('title', 'Policy Received')
 @section('page-title', 'Doctor Enrollment Entry')
 
 @section('content')
 @php
-    $defaultDate = now()->format('d/m/Y');
-    $defaultReceivedDate = now()->addDay()->format('d/m/Y');
-    $defaultRemark = 'Documents dispatched for enrollment processing.';
-    $defaultConsignment = 'CN-' . $enrollment->id . '-' . now()->format('Ymd');
-    $defaultTrackingLink = 'https://tracking.example.com/' . $enrollment->id;
+    $draftStep3 = $draftStep3 ?? [];
+    $defaultReceiveDate = old('rcv_date', data_get($draftStep3, 'rcv_date') ?: now()->format('d/m/Y'));
+    $defaultLastRenewedDate = old('last_renewed_date', data_get($draftStep3, 'last_renewed_date') ?: optional($enrollment->last_renewal_date)->format('d/m/Y'));
+    $defaultPolicyStartDate = old('policy_start_date', data_get($draftStep3, 'policy_start_date') ?: optional($enrollment->policy_date)->format('d/m/Y'));
+    $defaultPolicyEndDate = old('policy_end_date', data_get($draftStep3, 'policy_end_date'));
+    $showLastRenewedDate = filled(data_get($draftStep3, 'last_renewed_date'))
+        || filled(optional($enrollment->last_renewal_date)->format('d/m/Y'))
+        || filled($enrollment->renewal_date)
+        || filled($enrollment->policy_no)
+        || (isset($policyReceipts) && $policyReceipts->count() > 0);
 @endphp
 
 <section class="mx-auto max-w-4xl">
@@ -18,7 +23,7 @@
         <div class="mt-1 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
                 <h2 class="text-2xl font-bold text-slate-900">Name: {{ $enrollment->doctor_name ?? '—' }}</h2>
-                <p class="mt-1 text-sm text-slate-500">Submit the post document details for this enrollment.</p>
+                <p class="mt-1 text-sm text-slate-500">Submit policy received details for this enrollment.</p>
             </div>
             <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
                 <span class="font-semibold text-slate-900">Customer ID:</span> {{ $enrollment->customer_id_no ?? '—' }}
@@ -27,43 +32,49 @@
     </div>
 
     <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
-        {{-- Policy Received subform: submit first, then continue to post submission --}}
-        <form action="{{ route('admin.enrollment.policy-receipt.store', $enrollment) }}" method="post" enctype="multipart/form-data" id="policy_received_form" class="space-y-6 mb-6">
+        <form action="{{ route('admin.enrollment.policy-receipt.store', $enrollment) }}" method="post" enctype="multipart/form-data" id="policy_received_form" class="space-y-6">
             @csrf
             <input type="hidden" name="doctor" value="{{ $enrollment->id }}">
-            <h3 class="text-lg font-semibold">Policy Received (Step 3a)</h3>
+            <input type="hidden" name="workflow_step" value="3">
+            <input type="hidden" name="workflow_enrollment_id" id="workflow_enrollment_id_step3" value="{{ $enrollment->id }}">
+            <h3 class="text-lg font-semibold">Submit Policy Received</h3>
             <div class="grid gap-5 md:grid-cols-2">
                 <div class="form-group">
                     <label class="mb-2 block text-sm font-semibold text-slate-700">Policy No</label>
-                    <input type="text" name="policy_no" class="w-full rounded-xl border px-4 py-2" value="">
+                    <input type="text" name="policy_no" class="w-full rounded-xl border px-4 py-2" value="{{ old('policy_no', data_get($draftStep3, 'policy_no')) }}">
                 </div>
+                @if($showLastRenewedDate)
                 <div class="form-group">
                     <label class="mb-2 block text-sm font-semibold text-slate-700">Last Renewed Date</label>
-                    <input type="text" name="last_renewed_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off">
+                    <input type="text" name="last_renewed_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off" value="{{ $defaultLastRenewedDate }}">
                 </div>
+                @endif
                 <div class="form-group">
                     <label class="mb-2 block text-sm font-semibold text-slate-700">Policy Start Date</label>
-                    <input type="text" name="policy_start_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off">
+                    <input type="text" name="policy_start_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off" value="{{ $defaultPolicyStartDate }}">
                 </div>
                 <div class="form-group">
                     <label class="mb-2 block text-sm font-semibold text-slate-700">Policy End Date</label>
-                    <input type="text" name="policy_end_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off">
+                    <input type="text" name="policy_end_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off" value="{{ $defaultPolicyEndDate }}">
                 </div>
                 <div class="form-group">
                     <label class="mb-2 block text-sm font-semibold text-slate-700">Received Date</label>
-                    <input type="text" name="rcv_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off">
+                    <input type="text" name="rcv_date" class="w-full rounded-xl border px-4 py-2 datepicker" autocomplete="off" value="{{ $defaultReceiveDate }}">
                 </div>
                 <div class="form-group">
                     <label class="mb-2 block text-sm font-semibold text-slate-700">Policy File</label>
                     <input type="file" name="policy_file" class="block w-full">
                 </div>
             </div>
-            <div class="flex justify-end">
-                <button type="submit" class="rounded-xl bg-green-600 px-4 py-2 text-white">Save Policy Received</button>
+            <div class="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
+                <a href="{{ route('admin.enrollment.step2', $enrollment) }}" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Back</a>
+                <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
+                    <i class="ri-arrow-right-line"></i>
+                    <span>Save and Continue to Step 4</span>
+                </button>
             </div>
         </form>
 
-        {{-- Show existing policy receipts for reference --}}
         @if(!empty($policyReceipts) && $policyReceipts->count() > 0)
             <div class="mb-6">
                 <h4 class="font-semibold">Policy Received History</h4>
@@ -89,65 +100,6 @@
                 </table>
             </div>
         @endif
-
-        <form action="{{ route('admin.posts.store') }}" method="post" enctype="multipart/form-data" id="post_upload_form" class="space-y-6">
-            @csrf
-            <input type="hidden" name="doctor" value="{{ $enrollment->id }}">
-            <input type="hidden" name="return_to" value="{{ route('admin.enrollment.success', $enrollment->id) }}">
-
-            <div class="grid gap-5 md:grid-cols-2">
-                <div class="form-group">
-                    <label class="mb-2 block text-sm font-semibold text-slate-700" for="post_doc_date">Post date <span class="text-red-500">*</span></label>
-                    <input type="text" id="post_doc_date" name="post_doc_date" value="{{ old('post_doc_date', $defaultDate) }}" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" autocomplete="off" required>
-                </div>
-
-                <div class="form-group">
-                    <label class="mb-2 block text-sm font-semibold text-slate-700" for="post_doc_consignment_no">Consignment number <span class="text-red-500">*</span></label>
-                    <input type="text" id="post_doc_consignment_no" name="post_doc_consignment_no" value="{{ old('post_doc_consignment_no', $defaultConsignment) }}" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" required>
-                </div>
-
-                <div class="form-group">
-                    <label class="mb-2 block text-sm font-semibold text-slate-700" for="post_doc_by">Post by <span class="text-red-500">*</span></label>
-                    <input type="text" id="post_doc_by" name="post_doc_by" value="{{ old('post_doc_by', auth()->user()->name ?? 'Super Admin') }}" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" required>
-                </div>
-
-                <div class="form-group">
-                    <label class="mb-2 block text-sm font-semibold text-slate-700" for="post_doc_recieved_date">Received date <span class="text-red-500">*</span></label>
-                    <input type="text" id="post_doc_recieved_date" name="post_doc_recieved_date" value="{{ old('post_doc_recieved_date', $defaultReceivedDate) }}" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" autocomplete="off" required>
-                </div>
-
-                <div class="form-group">
-                    <label class="mb-2 block text-sm font-semibold text-slate-700" for="post_doc_recieved_by">Received by</label>
-                    <input type="text" id="post_doc_recieved_by" name="post_doc_recieved_by" value="{{ old('post_doc_recieved_by', $enrollment->doctor_name ?? 'Office Desk') }}" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
-                </div>
-
-                <div class="form-group">
-                    <label class="mb-2 block text-sm font-semibold text-slate-700" for="tracking_link">Tracking link</label>
-                    <input type="url" id="tracking_link" name="tracking_link" value="{{ old('tracking_link', $defaultTrackingLink) }}" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="https://">
-                </div>
-            </div>
-
-            <div class="grid gap-5 md:grid-cols-2">
-                <div class="form-group md:col-span-2">
-                    <label class="mb-2 block text-sm font-semibold text-slate-700" for="post_doc_remark">Remark <span class="text-red-500">*</span></label>
-                    <input type="text" id="post_doc_remark" name="post_doc_remark" value="{{ old('post_doc_remark', $defaultRemark) }}" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" required>
-                </div>
-
-                <div class="form-group md:col-span-2">
-                    <label class="mb-2 block text-sm font-semibold text-slate-700" for="post_doc_file">Document file</label>
-                    <input type="file" id="post_doc_file" name="post_doc_file" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
-                </div>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
-                <a href="{{ route('admin.enrollment.step2', $enrollment) }}" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Back</a>
-                <a href="{{ route('admin.posts') }}" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</a>
-                <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
-                    <i class="ri-send-plane-line"></i>
-                    <span>Submit post</span>
-                </button>
-            </div>
-        </form>
     </div>
 </section>
 
@@ -156,10 +108,68 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
         if (typeof flatpickr !== 'undefined') {
-            document.querySelectorAll('#post_doc_date, #post_doc_recieved_date, .datepicker').forEach(function (input) {
+            document.querySelectorAll('.datepicker').forEach(function (input) {
                 flatpickr(input, { dateFormat: 'd/m/Y' });
             });
         }
+
+        (function () {
+            const form = document.getElementById('policy_received_form');
+            const workflowField = document.getElementById('workflow_enrollment_id_step3');
+            const autosaveUrl = @json(route('admin.enrollment.autosave'));
+            let autosaveTimer = null;
+            let autosaveQueued = false;
+            let autosaveInFlight = false;
+
+            if (!form || !workflowField) {
+                return;
+            }
+
+            const scheduleAutosave = function () {
+                autosaveQueued = true;
+                if (autosaveTimer) {
+                    clearTimeout(autosaveTimer);
+                }
+
+                autosaveTimer = setTimeout(runAutosave, 2500);
+            };
+
+            const runAutosave = function () {
+                if (!autosaveQueued || autosaveInFlight) {
+                    return;
+                }
+
+                autosaveQueued = false;
+                autosaveInFlight = true;
+
+                const payload = new FormData(form);
+                payload.set('workflow_step', '3');
+                payload.set('workflow_enrollment_id', workflowField.value || '');
+
+                fetch(autosaveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': form.querySelector('input[name="_token"]')?.value || '',
+                        'Accept': 'application/json',
+                    },
+                    body: payload,
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data && data.success && data.enrollment_id) {
+                            workflowField.value = data.enrollment_id;
+                        }
+                    })
+                    .catch(() => {})
+                    .finally(() => {
+                        autosaveInFlight = false;
+                    });
+            };
+
+            form.addEventListener('input', scheduleAutosave, true);
+            form.addEventListener('change', scheduleAutosave, true);
+            setInterval(runAutosave, 25000);
+        })();
     </script>
 @endpush
 @endsection

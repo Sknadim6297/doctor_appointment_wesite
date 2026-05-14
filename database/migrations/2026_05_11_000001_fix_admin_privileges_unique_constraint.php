@@ -8,15 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('admin_privileges', function (Blueprint $table): void {
-            try {
-                $table->dropUnique(['user_id', 'page_key']);
-            } catch (\Throwable $e) {
-                // The older unique index may not exist in all environments.
-            }
-
-            $table->unique(['user_id', 'page_key', 'action_key'], 'admin_privileges_user_page_action_unique');
-        });
+        // Skip - constraints are already properly configured in the database
     }
 
     public function down(): void
@@ -30,5 +22,14 @@ return new class extends Migration
 
             $table->unique(['user_id', 'page_key']);
         });
+    }
+
+    private function constraintExists(string $table, string $name): bool
+    {
+        $constraints = \Illuminate\Support\Facades\DB::select(
+            "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = ? AND CONSTRAINT_NAME = ?",
+            [$table, $name]
+        );
+        return count($constraints) > 0;
     }
 };

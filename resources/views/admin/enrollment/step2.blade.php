@@ -7,6 +7,12 @@
 @php
     $doctorName = $enrollment->doctor_name ?: 'Doctor Enrollment';
     $postDate = now()->format('d/m/Y');
+    $qualificationLabel = '';
+    if (is_array($enrollment->qualification)) {
+        $qualificationLabel = implode(', ', array_map(fn($p) => is_array($p) ? ($p['name'] ?? '') : (string) $p, $enrollment->qualification));
+    } else {
+        $qualificationLabel = (string) ($enrollment->qualification ?? '');
+    }
 @endphp
 
 <section class="mx-auto max-w-5xl">
@@ -18,10 +24,10 @@
                 <p class="mt-1 text-sm text-slate-500">Review the enrollment document before moving to post submission.</p>
             </div>
             <div class="flex flex-wrap gap-2">
-                <button type="button" onclick="window.print()" class="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
+                <a href="{{ route('admin.enrollment.step2.pdf', $enrollment) }}" class="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
                     <i class="ri-download-2-line"></i>
                     <span>Download PDF</span>
-                </button>
+                </a>
                 <a href="{{ route('admin.enrollment.step3', $enrollment) }}" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
                     <span>Continue</span>
                     <i class="ri-arrow-right-line"></i>
@@ -53,7 +59,7 @@
                     <div class="rounded-xl bg-slate-50 p-4">
                         <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Doctor</p>
                         <p class="mt-1 text-base font-semibold text-slate-900">{{ $enrollment->doctor_name ?? '—' }}</p>
-                        <p class="mt-1 text-sm text-slate-600">{{ $enrollment->qualification ?? '—' }}</p>
+                        <p class="mt-1 text-sm text-slate-600">{{ $qualificationLabel !== '' ? $qualificationLabel : '—' }}</p>
                     </div>
                     <div class="rounded-xl bg-slate-50 p-4">
                         <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Specialization</p>

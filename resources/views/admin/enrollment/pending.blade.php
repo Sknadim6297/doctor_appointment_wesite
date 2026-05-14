@@ -7,10 +7,15 @@
 <!-- Header Section -->
 <div class="mb-6 flex items-center justify-between">
     <div>
-        <div class="mb-2 flex items-center gap-2">
+        <div class="mb-2 flex flex-wrap items-center gap-2">
             <a href="{{ route('admin.enrollment') }}" class="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900">
                 <i class="ri-arrow-left-line text-lg"></i>
                 Back to Enrollments
+            </a>
+            <span class="text-slate-300">|</span>
+            <a href="{{ route('admin.enrollment.monitoring') }}" class="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
+                <i class="ri-pulse-line"></i>
+                Enrollment CRM
             </a>
         </div>
         <h1 class="text-3xl font-bold text-slate-900">Pending Approvals</h1>
@@ -127,7 +132,7 @@
                         <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Created By</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Submitted Date</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
-                        @if(($canEdit ?? false) || ($canApprove ?? false) || ($canReject ?? false))
+                        @if(($canEdit ?? false) || ($canApprove ?? false) || ($canReject ?? false) || ($canReturn ?? false))
                             <th class="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
                         @endif
                     </tr>
@@ -170,7 +175,7 @@
                                 @if($status === 'pending')
                                     <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
                                         <i class="ri-time-line text-xs"></i>
-                                        Pending
+                                        Pending approval
                                     </span>
                                 @elseif($status === 'approved')
                                     <div>
@@ -197,7 +202,7 @@
                                 @endif
                             </td>
 
-                            @if(($canEdit ?? false) || ($canApprove ?? false) || ($canReject ?? false))
+                            @if(($canEdit ?? false) || ($canApprove ?? false) || ($canReject ?? false) || ($canReturn ?? false))
                                 <!-- Actions -->
                                 <td class="px-4 py-3">
                                     <div class="flex items-center justify-center gap-2">
@@ -206,12 +211,12 @@
                                         <i class="ri-eye-line text-base"></i>
                                     </a>
 
-                                    @if($status === 'pending')
+                                    @if($status === 'pending' && ($enr->workflow_status ?? '') !== 'returned_for_correction')
                                         @php
-                                            $isCreator = Auth::id() && (Auth::id() === $enr->created_by);
+                                            $allowRowEdit = (($canEdit ?? false) && (($isSuperAdmin ?? false) || ($isAdmin ?? false)));
                                         @endphp
 
-                                            @if(($canEdit ?? false) || $isCreator)
+                                            @if($allowRowEdit)
                                                 <a href="{{ route('admin.enrollment.edit', $enr->id) }}" class="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors" title="Edit">
                                                     <i class="ri-edit-line text-base"></i>
                                                     Edit

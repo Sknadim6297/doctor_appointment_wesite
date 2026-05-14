@@ -6,6 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class PolicyReceipt extends Model
 {
+    public const STATUS_DRAFT = 'draft';
+    public const STATUS_COMPLETED = 'completed';
+
     protected $fillable = [
         'policy_no',
         'enrollment_id',
@@ -15,6 +18,7 @@ class PolicyReceipt extends Model
         'policy_start_date',
         'policy_end_date',
         'policy_file',
+        'workflow_status',
     ];
 
     protected $dates = [

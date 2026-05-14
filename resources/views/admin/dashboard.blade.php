@@ -34,6 +34,87 @@
     </section>
 </div>
 
+@if($workflowSummary['incomplete'] > 0)
+<section class="mb-6 rounded-3xl border border-red-200 bg-red-50 p-6 shadow-lg">
+    <div class="mb-4 flex items-center justify-between">
+        <div>
+            <p class="text-sm font-semibold uppercase tracking-[0.14em] text-red-600">Incomplete Enrollments</p>
+            <h3 class="mt-1 text-xl font-bold text-red-900">{{ number_format($workflowSummary['incomplete']) }} Enrollment(s) Requiring Attention</h3>
+        </div>
+        <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-red-100">
+            <i class="ri-alert-fill text-3xl text-red-600"></i>
+        </div>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-red-200">
+                    <th class="px-4 py-2 text-left font-semibold text-red-900">Doctor</th>
+                    <th class="px-4 py-2 text-left font-semibold text-red-900">Customer ID</th>
+                    <th class="px-4 py-2 text-left font-semibold text-red-900">Status</th>
+                    <th class="px-4 py-2 text-left font-semibold text-red-900">Step</th>
+                    <th class="px-4 py-2 text-left font-semibold text-red-900">Last Activity</th>
+                    <th class="px-4 py-2 text-center font-semibold text-red-900">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($incompleteEnrollments as $enrollment)
+                    <tr class="border-b border-red-100">
+                        <td class="px-4 py-3 font-medium text-slate-800">{{ $enrollment->doctor_name ?? 'N/A' }}</td>
+                        <td class="px-4 py-3 text-slate-600">{{ $enrollment->customer_id_no ?? 'N/A' }}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-block rounded-full px-3 py-1 text-xs font-semibold {{ $enrollment->workflow_status === 'draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-orange-100 text-orange-800' }}">
+                                {{ ucfirst(str_replace('_', ' ', $enrollment->workflow_status ?? 'unknown')) }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 font-medium text-slate-800">Step {{ $enrollment->current_step ?? 1 }}</td>
+                        <td class="px-4 py-3 text-slate-600">{{ optional($enrollment->last_activity_at)->diffForHumans() ?? 'N/A' }}</td>
+                        <td class="px-4 py-3 text-center">
+                            <a href="{{ route('admin.enrollment.resume', $enrollment) }}" class="inline-flex items-center gap-1 rounded-lg bg-red-100 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-200">
+                                <i class="ri-play-line"></i> Resume
+                            </a>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" class="px-4 py-3 text-center text-slate-600">No incomplete enrollments at the moment.</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+</section>
+@endif
+
+<section class="mb-6 section-card border-l-4 border-blue-600">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <h3 class="section-title mb-0">Enrollment operations desk</h3>
+            <p class="mt-1 text-sm text-slate-600">Live counters across the full intake pipeline. Open the CRM workspace for drill-down.</p>
+        </div>
+        <a href="{{ route('admin.enrollment.monitoring') }}" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Open enrollment CRM</a>
+    </div>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        @foreach([
+            ['k' => 'new_enrollments', 'label' => 'New enrollments', 'href' => 'new_entries'],
+            ['k' => 'pending_approvals', 'label' => 'Pending approvals', 'href' => 'pending_approvals'],
+            ['k' => 'incomplete_drafts', 'label' => 'Incomplete drafts', 'href' => 'incomplete'],
+            ['k' => 'completed_enrollments', 'label' => 'Completed', 'href' => 'completed'],
+            ['k' => 'rejected_cases', 'label' => 'Rejected cases', 'href' => 'rejected'],
+            ['k' => 'returned_for_correction', 'label' => 'Returned', 'href' => 'returned'],
+        ] as $row)
+            <a href="{{ route('admin.enrollment.monitoring', ['bucket' => $row['href']]) }}" class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 transition hover:border-blue-200 hover:bg-white">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ $row['label'] }}</p>
+                <p class="mt-2 text-2xl font-bold text-slate-900">{{ number_format($crmCounters[$row['k']] ?? 0) }}</p>
+            </a>
+        @endforeach
+    </div>
+    <div class="mt-4 metric-row">
+        <span class="font-semibold text-slate-700">Active doctors (production-ready)</span>
+        <strong class="text-emerald-700">{{ number_format($stats['enrollment_doctors']) }}</strong>
+    </div>
+</section>
+
 <section class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
     @foreach($kpiCards as $card)
         <article class="kpi-card {{ $card['tone'] }}">
@@ -45,6 +126,66 @@
         </article>
     @endforeach
 </section>
+
+<div class="mb-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+    <section class="section-card border-l-4 border-rose-500">
+        <h3 class="section-title">Workflow Monitor</h3>
+        <div class="space-y-3">
+            <div class="metric-row"><span>Draft workflows</span><strong class="text-rose-700">{{ number_format($workflowSummary['draft']) }}</strong></div>
+            <div class="metric-row"><span>In progress</span><strong class="text-amber-700">{{ number_format($workflowSummary['in_progress']) }}</strong></div>
+            <div class="metric-row"><span>Pending approval</span><strong class="text-blue-700">{{ number_format($workflowSummary['pending_approval']) }}</strong></div>
+            <div class="metric-row"><span>Completed</span><strong class="text-emerald-700">{{ number_format($workflowSummary['completed']) }}</strong></div>
+            <div class="metric-row"><span>Incomplete enrollments</span><strong class="text-rose-700">{{ number_format($workflowSummary['incomplete']) }}</strong></div>
+        </div>
+    </section>
+
+    <section class="section-card border border-rose-200 bg-rose-50/40">
+        <div class="mb-4 flex items-center justify-between gap-3">
+            <h3 class="section-title mb-0">Incomplete Enrollments</h3>
+            <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">Requires attention</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Doctor</th>
+                        <th>Step</th>
+                        <th>Last Activity</th>
+                        <th class="text-right">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($incompleteEnrollments as $enrollment)
+                        <tr class="bg-rose-50/80">
+                            <td>
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 font-bold text-rose-700">!</div>
+                                    <div>
+                                        <p class="font-semibold text-slate-800">{{ $enrollment->doctor_name ?: 'N/A' }}</p>
+                                        <p class="text-xs text-slate-500">{{ $enrollment->customer_id_no ?: 'No membership ID' }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="inline-flex rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">
+                                    Step {{ (int) ($enrollment->current_step ?: 1) }} · {{ ucfirst(str_replace('_', ' ', $enrollment->workflow_status ?: 'draft')) }}
+                                </span>
+                            </td>
+                            <td class="text-sm text-slate-600">{{ optional($enrollment->last_activity_at ?? $enrollment->created_at)->format('d/m/Y H:i') }}</td>
+                            <td class="text-right">
+                                <a href="{{ route('admin.enrollment.resume', $enrollment) }}" class="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-500">Resume</a>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="py-6 text-center text-slate-500">No incomplete workflow records found.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
 
 <div class="mb-6 grid gap-6 xl:grid-cols-2">
     <section class="section-card">
