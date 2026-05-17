@@ -7,6 +7,7 @@ use App\Models\DoctorPost;
 use App\Models\Enrollment;
 use App\Models\PolicyReceipt;
 use App\Services\ActivityLogService;
+use App\Services\DoctorDocumentService;
 use App\Support\EnrollmentWorkflow;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ class DoctorPostController extends Controller
 {
     public function __construct(
         private readonly ActivityLogService $activityLogService,
+        private readonly DoctorDocumentService $doctorDocumentService,
     ) {
     }
 
@@ -114,7 +116,7 @@ class DoctorPostController extends Controller
 
         $filePath = $request->file('post_doc_file')->store('doctor_posts', 'public');
 
-        DoctorPost::create([
+        $post = DoctorPost::create([
             'enrollment_id' => $enrollment->id,
             'doctor_name' => $enrollment->doctor_name,
             'post_doc_date' => $isConsignment ? Carbon::createFromFormat('d/m/Y', $data['post_doc_date'])->format('Y-m-d') : null,
@@ -127,6 +129,8 @@ class DoctorPostController extends Controller
             'post_doc_file' => $filePath,
             'created_by' => Auth::id(),
         ]);
+
+        $this->doctorDocumentService->syncDoctorPost($post);
 
         if ($finalize) {
             PolicyReceipt::query()

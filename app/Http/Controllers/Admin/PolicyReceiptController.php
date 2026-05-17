@@ -3,14 +3,19 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Models\PolicyReceipt;
 use App\Models\Enrollment;
-use Illuminate\Support\Facades\Storage;
+use App\Models\PolicyReceipt;
+use App\Services\DoctorDocumentService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class PolicyReceiptController extends Controller
 {
+    public function __construct(
+        private readonly DoctorDocumentService $doctorDocumentService,
+    ) {
+    }
     public function index(Request $request)
     {
         $search = $request->query('search');
@@ -322,6 +327,10 @@ class PolicyReceiptController extends Controller
             $enrollment->save();
         } catch (\Exception $e) {
             // Do not break creation flow if enrollment update fails; log or ignore silently.
+        }
+
+        if ($filePath) {
+            $this->doctorDocumentService->syncPolicyReceipt($policy);
         }
 
         return $policy;

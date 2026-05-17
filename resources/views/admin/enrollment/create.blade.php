@@ -35,11 +35,11 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ $submitRoute ?? ($enrollment ? route('admin.enrollment.update', optional($enrollment)->id) : route('admin.enrollment.store')) }}" id="enrollmentForm" novalidate>
+    <form method="POST" action="{{ $submitRoute ?? ($enrollment ? route('admin.enrollment.update', optional($enrollment)->id) : route('admin.enrollment.store')) }}" id="enrollmentForm" novalidate enctype="multipart/form-data">
         @csrf
         <input type="hidden" name="workflow_step" value="1">
         <input type="hidden" name="workflow_enrollment_id" id="workflow_enrollment_id" value="{{ old('workflow_enrollment_id', optional($enrollment)->id ?? '') }}">
-        @if($enrollment)
+        @if($enrollment && !request()->routeIs('admin.enrollment.legacy-edit'))
             @method('PUT')
         @endif
 
@@ -216,49 +216,38 @@
                 <div class="form-group lg:col-span-2">
                     <label class="form-label">Qualifications</label>
                     @php
-                        // Build initial qualification rows from old input or enrollment
-                        $qualNames = old('qualification_names');
-                        $qualYears = old('qualification_years');
-                        if (empty($qualNames) && !empty($enrollment)) {
-                            if (is_array($enrollment->qualification)) {
-                                $qualNames = array_map(fn($p) => $p['name'] ?? '', $enrollment->qualification);
-                                $qualYears = array_map(fn($p) => $p['year'] ?? '', $enrollment->qualification);
-                            } elseif (!empty($enrollment->qualification)) {
-                                // legacy: treat as single qualification string
-                                $qualNames = [$enrollment->qualification];
-                                $qualYears = (array) ($enrollment->qualification_year ?? []);
+                        $qualRows = [];
+                        if (old('qualification_names') !== null || old('qualification_years') !== null) {
+                            $names = (array) old('qualification_names', []);
+                            $years = (array) old('qualification_years', []);
+                            $count = max(count($names), count($years));
+                            for ($qi = 0; $qi < $count; $qi++) {
+                                $qualRows[] = [
+                                    'name' => $names[$qi] ?? '',
+                                    'year' => $years[$qi] ?? '',
+                                ];
                             }
+                        } elseif (!empty($enrollment)) {
+                            $qualRows = $enrollment->qualificationRowsForForm();
                         }
-                        $qualNames = (array) $qualNames;
-                        $qualYears = (array) $qualYears;
+                        if ($qualRows === []) {
+                            $qualRows = [['name' => '', 'year' => '']];
+                        }
                     @endphp
 
                     <div id="qualifications_container">
-                        @if(count($qualNames) > 0)
-                            @foreach($qualNames as $i => $qname)
-                                <div class="qualification-row mb-3 flex gap-3 items-start">
-                                    <input type="text" name="qualification_names[]" value="{{ old('qualification_names.'.$i, $qname) }}" class="form-input" placeholder="Qualification (e.g. MBBS)">
-                                    <select name="qualification_years[]" class="form-input" style="width:130px;">
-                                        <option value="">Year</option>
-                                        @foreach($years as $yr)
-                                            <option value="{{ $yr }}" {{ (string) (old('qualification_years.'.$i, $qualYears[$i] ?? '')) === (string) $yr ? 'selected' : '' }}>{{ $yr }}</option>
-                                        @endforeach
-                                    </select>
-                                    <button type="button" class="btn btn-default" onclick="removeQualificationRow(this)">Remove</button>
-                                </div>
-                            @endforeach
-                        @else
+                        @foreach($qualRows as $i => $row)
                             <div class="qualification-row mb-3 flex gap-3 items-start">
-                                <input type="text" name="qualification_names[]" class="form-input" placeholder="Qualification (e.g. MBBS)">
+                                <input type="text" name="qualification_names[]" value="{{ $row['name'] }}" class="form-input" placeholder="Qualification (e.g. MBBS)">
                                 <select name="qualification_years[]" class="form-input" style="width:130px;">
                                     <option value="">Year</option>
                                     @foreach($years as $yr)
-                                        <option value="{{ $yr }}">{{ $yr }}</option>
+                                        <option value="{{ $yr }}" {{ (string) ($row['year'] ?? '') === (string) $yr ? 'selected' : '' }}>{{ $yr }}</option>
                                     @endforeach
                                 </select>
                                 <button type="button" class="btn btn-default" onclick="removeQualificationRow(this)">Remove</button>
                             </div>
-                        @endif
+                        @endforeach
                     </div>
 
                     <div class="mt-2">
@@ -508,6 +497,173 @@
                 </label>
             </div>
 
+        </section>
+
+        {{-- ─────────────── DOCUMENT UPLOADS ─────────────── --}}
+        <section class="enrollment-panel mb-8">
+            <div class="panel-heading">
+                <div>
+                    <p class="panel-eyebrow">Document Submission</p>
+                    <h4 class="form-section-title">Required Documents</h4>
+                </div>
+                <p class="panel-note">Upload all required documents for the enrollment process.</p>
+            </div>
+            <div class="space-y-6">
+                @php
+                    use App\Support\DoctorDocumentCatalog;
+                    $uploadedDocs = collect($existingDocuments ?? []);
+                    $docCategoryLabels = $documentCategoryLabels ?? DoctorDocumentCatalog::categoryLabels();
+                @endphp
+
+                @if(!empty($enrollment) && $uploadedDocs->isNotEmpty())
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <h5 class="text-sm font-semibold text-slate-800 mb-1">Uploaded documents</h5>
+                        <p class="text-xs text-slate-500 mb-3">These files are already on file. Upload again only to add or replace a document.</p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[640px] border-collapse text-sm">
+                                <thead>
+                                    <tr class="bg-slate-800 text-left text-xs uppercase tracking-wide text-white">
+                                        <th class="px-3 py-2">Document</th>
+                                        <th class="px-3 py-2">Category</th>
+                                        <th class="px-3 py-2">Status</th>
+                                        <th class="px-3 py-2 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($uploadedDocs as $doc)
+                                        <tr class="border-b border-slate-200 bg-white">
+                                            <td class="px-3 py-2">
+                                                <div class="font-medium text-slate-800">{{ $doc->document_title ?: 'Document' }}</div>
+                                                <div class="text-xs text-slate-500">{{ $doc->displayFilename() }}</div>
+                                            </td>
+                                            <td class="px-3 py-2 text-slate-600">{{ $doc->categoryLabel() }}</td>
+                                            <td class="px-3 py-2">
+                                                @php
+                                                    $statusClass = match($doc->verification_status) {
+                                                        'approved' => 'bg-emerald-100 text-emerald-800',
+                                                        'rejected' => 'bg-red-100 text-red-800',
+                                                        default => 'bg-amber-100 text-amber-800',
+                                                    };
+                                                @endphp
+                                                <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold {{ $statusClass }}">{{ $doc->statusLabel() }}</span>
+                                            </td>
+                                            <td class="px-3 py-2 text-right whitespace-nowrap">
+                                                @if($doc->fileExists())
+                                                    <a href="{{ route('admin.doctors.documents.view', ['doctor' => $enrollment->id, 'document' => $doc->id]) }}" target="_blank" class="text-blue-600 hover:underline text-xs font-semibold">View</a>
+                                                    <span class="text-slate-300 mx-1">|</span>
+                                                    <a href="{{ route('admin.doctors.documents.download', ['doctor' => $enrollment->id, 'document' => $doc->id]) }}" class="text-blue-600 hover:underline text-xs font-semibold">Download</a>
+                                                @else
+                                                    <span class="text-xs text-slate-400">File missing</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <hr class="border-slate-200">
+                @endif
+
+                {{-- Insurance Form --}}
+                <div>
+                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                        <span>Form Upload</span>
+                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Optional</span>
+                    </h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {{-- Insurance Form --}}
+                        <div class="form-group">
+                            <label class="form-label">Insurance Form</label>
+                            <input type="file" name="doc_insurance_form" id="doc_insurance_form" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">PDF, JPG, PNG, DOC, DOCX (Max 10MB)</p>
+                        </div>
+
+                        {{-- Enrollment Form --}}
+                        <div class="form-group">
+                            <label class="form-label">Enrollment Form</label>
+                            <input type="file" name="doc_enrollment_form" id="doc_enrollment_form" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">PDF, JPG, PNG, DOC, DOCX (Max 10MB)</p>
+                        </div>
+
+                        {{-- Other Documents (Form section) --}}
+                        <div class="form-group">
+                            <label class="form-label">Other Documents</label>
+                            <input type="file" name="doc_other_forms[]" id="doc_other_forms" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">Multiple upload allowed • PDF, JPG, PNG, DOC, DOCX (Max 10MB each)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-slate-200">
+
+                {{-- Identity & Medical Documents --}}
+                <div>
+                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                        <span>Identity & Professional Documents</span>
+                        <span class="text-xs bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full">Required</span>
+                    </h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {{-- Aadhaar Card --}}
+                        <div class="form-group">
+                            <label class="form-label">Aadhaar Card <span class="text-red-500">*</span></label>
+                            <input type="file" name="doc_aadhaar_card" id="doc_aadhaar_card" accept=".pdf,.jpg,.jpeg,.png" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">PDF or Image (Max 10MB)</p>
+                        </div>
+
+                        {{-- PAN Card --}}
+                        <div class="form-group">
+                            <label class="form-label">PAN Card <span class="text-red-500">*</span></label>
+                            <input type="file" name="doc_pan_card" id="doc_pan_card" accept=".pdf,.jpg,.jpeg,.png" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">PDF or Image (Max 10MB)</p>
+                        </div>
+
+                        {{-- Medical Registration Certificate --}}
+                        <div class="form-group md:col-span-2">
+                            <label class="form-label">Medical Registration Certificate <span class="text-red-500">*</span></label>
+                            <input type="file" name="doc_medical_registration" id="doc_medical_registration" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">PDF or Image (Max 10MB)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-slate-200">
+
+                {{-- Other Documents & Payment --}}
+                <div>
+                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                        <span>Additional Documents</span>
+                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Optional</span>
+                    </h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {{-- Other Documents (Multiple) --}}
+                        <div class="form-group md:col-span-2">
+                            <label class="form-label">Other Documents (Multiple Upload Allowed)</label>
+                            <input type="file" name="doc_other_documents[]" id="doc_other_documents" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-purple-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">Multiple files allowed • PDF, JPG, PNG, DOC, DOCX (Max 10MB each)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-slate-200">
+
+                {{-- Payment Documents --}}
+                <div>
+                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                        <span>Payment Documents</span>
+                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Optional</span>
+                    </h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {{-- Payment Document Upload --}}
+                        <div class="form-group md:col-span-2">
+                            <label class="form-label">Payment Document Upload</label>
+                            <input type="file" name="doc_payment_document" id="doc_payment_document" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-amber-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">Receipt, Invoice, or Proof of Payment • PDF or Image (Max 10MB)</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
         </section>
 
         {{-- ─────────────── FORM ACTIONS ─────────────── --}}
@@ -947,7 +1103,7 @@ function enrollmentForm(config) {
         btn.type = 'button';
         btn.className = 'btn btn-default';
         btn.textContent = 'Remove';
-        btn.onclick = function () { removeQualificationRow(btn); };
+        btn.addEventListener('click', function () { removeQualificationRow(this); });
 
         row.appendChild(input);
         row.appendChild(select);
@@ -955,7 +1111,142 @@ function enrollmentForm(config) {
 
         container.appendChild(row);
     }
+</script>
 
+<!-- Real-time Field Validation -->
+<script>
+(function() {
+            // Wait for page to load
+            setTimeout(function() {
+                initializeRealTimeValidation();
+            }, 500);
+
+            function initializeRealTimeValidation() {
+                const form = document.getElementById('enrollmentForm');
+                if (!form) return;
+
+                // Fields to validate in real-time
+                const fieldsToValidate = [
+                    'doctor_email',
+                    'aadhar_card_no',
+                    'pan_card_no',
+                    'mobile2',
+                    'doctor_name',
+                    'doctor_address',
+                    'country',
+                    'state',
+                    'city',
+                ];
+
+                fieldsToValidate.forEach(fieldName => {
+                    const field = document.getElementById(fieldName);
+                    if (field) {
+                        field.addEventListener('blur', () => validateFieldRealTime(fieldName));
+                        field.addEventListener('change', () => validateFieldRealTime(fieldName));
+                        // For email, also validate on keyup
+                        if (fieldName === 'doctor_email') {
+                            field.addEventListener('keyup', debounce(() => validateFieldRealTime(fieldName), 500));
+                        }
+                    }
+                });
+            }
+
+            function debounce(func, wait) {
+                let timeout;
+                return function() {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(func, wait);
+                };
+            }
+
+            function validateFieldRealTime(fieldName) {
+                const field = document.getElementById(fieldName);
+                if (!field) return;
+
+                const value = field.value.trim();
+                let errors = [];
+
+                // Client-side validation rules
+                if (fieldName === 'doctor_email') {
+                    if (value && !isValidEmail(value)) {
+                        errors.push('Please enter a valid email address');
+                    }
+                } else if (fieldName === 'aadhar_card_no') {
+                    if (value && !/^\d{12}$/.test(value)) {
+                        errors.push('Aadhaar card must be exactly 12 digits');
+                    }
+                } else if (fieldName === 'pan_card_no') {
+                    if (value && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(value)) {
+                        errors.push('PAN must be in format: AAAAA0000A');
+                    }
+                } else if (fieldName === 'mobile2') {
+                    if (value && !/^[0-9]{10}$/.test(value)) {
+                        errors.push('Mobile number must be exactly 10 digits');
+                    }
+                } else if (fieldName === 'doctor_name') {
+                    if (!value) {
+                        errors.push('Doctor name is required');
+                    } else if (value.length < 3 || value.length > 200) {
+                        errors.push('Doctor name must be between 3 and 200 characters');
+                    }
+                } else if (fieldName === 'doctor_address') {
+                    if (!value) {
+                        errors.push('Address is required');
+                    } else if (value.length < 5 || value.length > 500) {
+                        errors.push('Address must be between 5 and 500 characters');
+                    }
+                } else if (fieldName === 'country') {
+                    if (!value || value === '0') {
+                        errors.push('Please select a country');
+                    }
+                } else if (fieldName === 'state') {
+                    if (!value || value === '0') {
+                        errors.push('Please select a state');
+                    }
+                } else if (fieldName === 'city') {
+                    if (!value || value === '0') {
+                        errors.push('Please select a city');
+                    }
+                }
+
+                // Display errors
+                displayFieldErrors(fieldName, errors);
+            }
+
+            function isValidEmail(email) {
+                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+            }
+
+            function displayFieldErrors(fieldName, errors) {
+                const field = document.getElementById(fieldName);
+                if (!field) return;
+
+                // Remove existing error messages
+                const existingError = field.parentElement.querySelector('.realtime-error-message');
+                if (existingError) {
+                    existingError.remove();
+                }
+
+                if (errors.length > 0) {
+                    // Add error styling
+                    field.classList.add('border-red-500', 'ring-red-200');
+                    field.classList.remove('border-slate-300');
+
+                    // Create and display error message
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'realtime-error-message text-xs text-red-600 mt-1';
+                    errorDiv.textContent = errors[0];
+                    field.parentElement.appendChild(errorDiv);
+                } else {
+                    // Remove error styling
+                    field.classList.remove('border-red-500', 'ring-red-200');
+                    field.classList.add('border-slate-300');
+                }
+            }
+        })();
+    </script>
+
+    <script>
     function removeQualificationRow(btn) {
         const row = btn.closest('.qualification-row');
         if (!row) return;
@@ -975,6 +1266,7 @@ function enrollmentForm(config) {
         });
     }
 
+    @if(!($isSuperAdmin ?? false))
     (function () {
         const form = document.getElementById('enrollmentForm');
         const workflowField = document.getElementById('workflow_enrollment_id');
@@ -1032,5 +1324,6 @@ function enrollmentForm(config) {
         form.addEventListener('change', scheduleAutosave, true);
         setInterval(runAutosave, 25000);
     })();
+    @endif
 </script>
 @endsection

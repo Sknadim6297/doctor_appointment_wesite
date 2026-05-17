@@ -14,7 +14,9 @@ use App\Models\PolicyReceipt;
 use App\Models\RenewalChequeDeposit;
 use App\Models\Specialization;
 use App\Services\ActivityLogService;
+use App\Services\DoctorDocumentService;
 use App\Services\SecurityAlertService;
+use App\Support\DoctorDocumentCatalog;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +27,8 @@ class DoctorController extends Controller
 {
     public function __construct(
         private readonly ActivityLogService $activityLogService,
-        private readonly SecurityAlertService $securityAlertService
+        private readonly SecurityAlertService $securityAlertService,
+        private readonly DoctorDocumentService $doctorDocumentService,
     ) {
     }
 
@@ -277,12 +280,12 @@ class DoctorController extends Controller
             ->take(25)
             ->get();
 
-        $documents = DoctorDocument::query()
-            ->with('creator')
-            ->where('enrollment_id', $doctor->id)
-            ->latest('id')
-            ->take(25)
-            ->get();
+        $groupedDocuments = $this->doctorDocumentService->groupedForEnrollment($doctor);
+        $documentCategoryLabels = DoctorDocumentCatalog::categoryLabels();
+        $canVerifyDocuments = auth()->user() && (
+            in_array(auth()->user()->role ?? null, ['admin', 'super_admin'], true)
+            || (method_exists(auth()->user(), 'hasAdminRole') && auth()->user()->hasAdminRole(['admin', 'super_admin']))
+        );
 
         $policyReceipts = PolicyReceipt::query()
             ->where(function ($query) use ($doctor) {
@@ -320,7 +323,9 @@ class DoctorController extends Controller
             'renewalStatus',
             'daysUntilRenewal',
             'posts',
-            'documents',
+            'groupedDocuments',
+            'documentCategoryLabels',
+            'canVerifyDocuments',
             'cases',
             'policyReceipts',
             'activeTab'

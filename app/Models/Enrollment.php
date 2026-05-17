@@ -165,4 +165,181 @@ class Enrollment extends Model
     {
         return EnrollmentWorkflow::label($this->workflow_status);
     }
+
+    public function displaySpecializationName(): ?string
+    {
+        $name = trim((string) ($this->specialization?->name ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        $planName = trim((string) ($this->plan_name ?? ''));
+
+        return $planName !== '' ? $planName : null;
+    }
+
+    public function formattedQualification(): ?string
+    {
+        $qualification = $this->qualification;
+
+        if (is_string($qualification)) {
+            $decoded = json_decode($qualification, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $qualification = $decoded;
+            }
+        }
+
+        if (is_array($qualification)) {
+            $parts = array_filter(array_map(function ($item) {
+                if (is_array($item)) {
+                    return trim((string) ($item['name'] ?? ''));
+                }
+
+                return trim((string) $item);
+            }, $qualification));
+
+            return $parts !== [] ? implode(', ', $parts) : null;
+        }
+
+        $text = trim((string) ($qualification ?? ''));
+
+        return $text !== '' ? $text : null;
+    }
+
+    public function formattedQualificationYears(): ?string
+    {
+        $years = $this->qualification_year;
+
+        if (is_string($years)) {
+            $decoded = json_decode($years, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $years = $decoded;
+            }
+        }
+
+        if (is_array($years)) {
+            $parts = array_filter(array_map(fn ($year) => trim((string) $year), $years));
+
+            return $parts !== [] ? implode(', ', $parts) : null;
+        }
+
+        if (is_numeric($years)) {
+            return (string) (int) $years;
+        }
+
+        $text = trim((string) ($years ?? ''));
+
+        return $text !== '' ? $text : null;
+    }
+
+    public function formattedRegistrationLine(): ?string
+    {
+        $registrationNo = trim((string) ($this->medical_registration_no ?? ''));
+        $registrationYear = trim((string) ($this->year_of_reg ?? ''));
+
+        if ($registrationNo !== '' && $registrationYear !== '') {
+            return $registrationNo . ' / ' . $registrationYear;
+        }
+
+        if ($registrationNo !== '') {
+            return $registrationNo;
+        }
+
+        if ($registrationYear !== '') {
+            return $registrationYear;
+        }
+
+        return null;
+    }
+
+    public function formattedLocation(): ?string
+    {
+        $city = trim((string) ($this->city_name ?? ''));
+        $state = trim((string) ($this->state_name ?? ''));
+
+        if ($city !== '' && $state !== '') {
+            return $city . ', ' . $state;
+        }
+
+        return $city !== '' ? $city : ($state !== '' ? $state : null);
+    }
+
+    public function formattedQualificationWithYears(): ?string
+    {
+        $qualification = $this->formattedQualification();
+        $years = $this->formattedQualificationYears();
+
+        if ($qualification && $years) {
+            return $qualification . ' (' . $years . ')';
+        }
+
+        return $qualification ?: $years;
+    }
+
+    /**
+     * @return array<int, array{name: string, year: string}>
+     */
+    public function qualificationRowsForForm(): array
+    {
+        $rows = [];
+        $qualification = $this->qualification;
+        $years = $this->qualification_year;
+
+        if (empty($qualification) && empty($years)) {
+            $step1 = data_get($this->draft_data, 'step1', []);
+            if (is_array($step1) && ($step1['qualification'] ?? null) !== null) {
+                $qualification = $step1['qualification'];
+                $years = $step1['qualification_year'] ?? null;
+            }
+        }
+
+        if (is_string($qualification)) {
+            $decoded = json_decode($qualification, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $qualification = $decoded;
+            }
+        }
+
+        if (is_string($years)) {
+            $decoded = json_decode($years, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $years = $decoded;
+            }
+        }
+        $years = is_array($years) ? array_values($years) : [];
+
+        if (is_array($qualification)) {
+            foreach ($qualification as $index => $item) {
+                if (is_array($item)) {
+                    $name = trim((string) ($item['name'] ?? $item['qualification'] ?? ''));
+                    $year = $item['year'] ?? ($years[$index] ?? '');
+                } else {
+                    $name = trim((string) $item);
+                    $year = $years[$index] ?? '';
+                }
+
+                if ($name !== '' || (string) $year !== '') {
+                    $rows[] = [
+                        'name' => $name,
+                        'year' => $year !== null && $year !== '' ? (string) $year : '',
+                    ];
+                }
+            }
+        } elseif (is_string($qualification) && trim($qualification) !== '') {
+            $rows[] = [
+                'name' => trim($qualification),
+                'year' => isset($years[0]) && $years[0] !== '' ? (string) $years[0] : '',
+            ];
+        }
+
+        if ($rows === [] && $years !== []) {
+            foreach ($years as $year) {
+                if ($year !== null && $year !== '') {
+                    $rows[] = ['name' => '', 'year' => (string) $year];
+                }
+            }
+        }
+
+        return $rows;
+    }
 }

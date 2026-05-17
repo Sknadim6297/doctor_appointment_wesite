@@ -83,6 +83,13 @@ class DashboardController extends Controller
             ')
             ->first();
 
+        // Handle null case when database is empty
+        $progressStats = $progressStats ?? (object) [
+            'with_documents' => 0,
+            'with_cases' => 0,
+            'with_photo' => 0,
+        ];
+
         $progress = [
             'with_documents' => ['count' => (int) $progressStats->with_documents, 'total' => $doctorCount],
             'with_cases' => ['count' => (int) $progressStats->with_cases, 'total' => $doctorCount],
@@ -101,6 +108,13 @@ class DashboardController extends Controller
                 SUM(CASE WHEN plan = 3 THEN 1 ELSE 0 END) as combo_count
             ')
             ->first();
+
+        // Handle null case when database is empty
+        $planStats = $planStats ?? (object) [
+            'normal_count' => 0,
+            'high_count' => 0,
+            'combo_count' => 0,
+        ];
 
         $plans = [
             'normal' => (int) $planStats->normal_count,

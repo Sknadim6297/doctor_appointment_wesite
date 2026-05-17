@@ -112,6 +112,14 @@
             });
         }
 
+        @php
+            $autosaveUser = auth()->user();
+            $skipAutosave = $autosaveUser && (
+                (($autosaveUser->role ?? null) === 'super_admin')
+                || (method_exists($autosaveUser, 'hasAdminRole') && $autosaveUser->hasAdminRole('super_admin'))
+            );
+        @endphp
+        @if(!$skipAutosave)
         (function () {
             const form = document.getElementById('post_upload_form');
             const workflowField = document.getElementById('workflow_enrollment_id_step4');
@@ -169,6 +177,7 @@
             form.addEventListener('change', scheduleAutosave, true);
             setInterval(runAutosave, 25000);
         })();
+        @endif
     </script>
 @endpush
 @endsection

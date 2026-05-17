@@ -22,15 +22,6 @@ class AdminSeeder extends Seeder
             'role' => 'super_admin',
             'is_active' => true,
         ]);
-
-        // Create Regular Admin
-        User::create([
-            'name' => 'Admin User',
-            'email' => 'admin@mediforum.com',
-            'password' => Hash::make('password'),
-            'role' => 'admin',
-            'is_active' => true,
-        ]);
     }
 }
 

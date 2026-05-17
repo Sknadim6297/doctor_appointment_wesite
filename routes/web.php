@@ -148,6 +148,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('enrollment/autosave', [EnrollmentController::class, 'autosave'])
             ->middleware('admin.privilege:enrollment,edit')
             ->name('enrollment.autosave');
+        // AJAX: field-level validation for enrollment form
+        Route::post('enrollment/validate-field', [EnrollmentController::class, 'validateField'])
+            ->middleware('admin.privilege:enrollment,edit')
+            ->name('enrollment.validate-field');
         Route::post('enrollment/{enrollment}/edit-access/request', [EnrollmentEditAccessController::class, 'request'])
             ->middleware('admin.privilege:enrollment,view')
             ->name('enrollment.edit-access.request');
@@ -193,6 +197,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::match(['get', 'post'], 'index.php/doctor_list/doctor_search', [DoctorController::class, 'membershipNumbers'])->middleware('admin.privilege:doctors,view')->name('doctors.membership-search.legacy');
         Route::get('doctors/{doctor}', [DoctorController::class, 'show'])->middleware(['admin.privilege:doctors,view', 'sensitive.otp:enrollment,doctor'])->name('doctors.show');
         Route::post('doctors/{doctor}/documents', [DoctorDocumentController::class, 'storeForDoctor'])->middleware('admin.privilege:doctors,edit')->name('doctors.documents.store');
+        Route::get('doctors/{doctor}/documents/{document}/view', [DoctorDocumentController::class, 'view'])->middleware('admin.privilege:doctors,view')->name('doctors.documents.view');
+        Route::get('doctors/{doctor}/documents/{document}/download', [DoctorDocumentController::class, 'download'])->middleware('admin.privilege:doctors,view')->name('doctors.documents.download');
+        Route::post('doctors/{doctor}/documents/{document}/approve', [DoctorDocumentController::class, 'approve'])->middleware('admin.privilege:doctors,edit')->name('doctors.documents.approve');
+        Route::post('doctors/{doctor}/documents/{document}/reject', [DoctorDocumentController::class, 'reject'])->middleware('admin.privilege:doctors,edit')->name('doctors.documents.reject');
+        Route::post('doctors/{doctor}/documents/{document}/reupload', [DoctorDocumentController::class, 'reupload'])->middleware('admin.privilege:doctors,edit')->name('doctors.documents.reupload');
         Route::post('doctors/{doctor}/send-mail', [DoctorController::class, 'sendMail'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-mail');
         Route::post('doctors/{doctor}/send-sms', [DoctorController::class, 'sendSms'])->middleware('admin.privilege:doctors,edit')->name('doctors.send-sms');
         Route::post('doctors/{doctor}/resend-bond', [DoctorController::class, 'resendBond'])->middleware('admin.privilege:doctors,edit')->name('doctors.resend-bond');

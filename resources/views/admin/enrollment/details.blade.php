@@ -35,11 +35,22 @@
         in_array(($currentUser->role ?? null), ['admin', 'super_admin'], true) ||
         (method_exists($currentUser, 'hasAdminRole') && $currentUser->hasAdminRole(['admin', 'super_admin']))
     );
+    $isSuperAdmin = $isSuperAdmin ?? (
+        $currentUser && (
+            (($currentUser->role ?? null) === 'super_admin') ||
+            (method_exists($currentUser, 'hasAdminRole') && $currentUser->hasAdminRole('super_admin'))
+        )
+    );
+    $bypassesApprovalWorkflow = $bypassesApprovalWorkflow ?? (
+        $isSuperAdmin || ($enrollment->created_by_role ?? '') === 'super_admin'
+    );
     $ea = $editAccessState ?? ['locked' => false, 'session_active' => false, 'session_expires_at' => null, 'pending_otp' => false, 'requester' => null, 'can_request' => false];
-    $editWorkflowUnlocked = $isPrivilegedAdmin || empty($ea['locked']) || !empty($ea['session_active']);
-    $canProceedToStep2 = $status === 'approved' && (
-        (auth()->id() === (int) $enrollment->created_by) || $isPrivilegedAdmin
-    ) && $editWorkflowUnlocked;
+    $editWorkflowUnlocked = $bypassesApprovalWorkflow || empty($ea['locked']) || !empty($ea['session_active']);
+    $canProceedToStep2 = $canProceedToStep2 ?? (
+        ($bypassesApprovalWorkflow || $status === 'approved')
+        && ((auth()->id() === (int) $enrollment->created_by) || $isPrivilegedAdmin || $isSuperAdmin)
+        && $editWorkflowUnlocked
+    );
     $backRoute = $isPrivilegedAdmin ? route('admin.enrollment.monitoring') : route('admin.enrollment');
     $backLabel = $isPrivilegedAdmin ? 'Enrollment CRM' : 'My Enrollments';
 @endphp
@@ -49,7 +60,7 @@
     <a href="{{ $backRoute }}" class="btn btn-ghost">
         ← Back to {{ $backLabel }}
     </a>
-    @if($isPrivilegedAdmin)
+    @if($isPrivilegedAdmin || $isSuperAdmin)
         <a href="{{ route('admin.enrollment.edit', $enrollment->id) }}" class="btn btn-primary">
             Edit enrollment
         </a>
@@ -70,7 +81,7 @@
     @endif
 </div>
 
-@if(!empty($ea['locked']) && empty($ea['session_active']) && !$isPrivilegedAdmin)
+@if(!empty($ea['locked']) && empty($ea['session_active']) && !$bypassesApprovalWorkflow)
     <div class="mb-4 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
         <strong>View only.</strong> This enrollment is approved, submitted, or completed. Direct editing is disabled. Use <em>Request edit access</em> so an administrator can verify an OTP sent to their email and grant you a time-limited edit window.
     </div>
@@ -148,11 +159,11 @@
         </div>
     </div>
 
-    @if($status === 'pending')
+    @if($status === 'pending' && !$bypassesApprovalWorkflow)
         <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <strong>⚠️ Waiting for Approval:</strong> This enrollment is awaiting admin review and is currently locked. Step 2 is unavailable until it is approved.
         </div>
-    @elseif($status === 'approved')
+    @elseif($status === 'approved' && !$bypassesApprovalWorkflow)
         <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             <strong>Admin has approved your enrollment.</strong> You can proceed to the next step.
         </div>
@@ -381,7 +392,8 @@
                                     <div class="font-semibold text-slate-900">{{ $document->document_title ?: $na }}</div>
                                     <div class="mt-1 text-xs text-slate-600">{{ $document->document_type ?: $na }}</div>
                                     @if($document->document_file)
-                                        <a class="mt-2 inline-block rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-200" href="{{ asset('storage/' . $document->document_file) }}" target="_blank">📥 Download</a>
+                                        <a class="mt-2 inline-block rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-200" href="{{ route('admin.doctors.documents.view', [$enrollment->id, $document->id]) }}" target="_blank" rel="noopener">View</a>
+                                        <a class="mt-2 inline-block rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200" href="{{ route('admin.doctors.documents.download', [$enrollment->id, $document->id]) }}">Download</a>
                                     @endif
                                 </li>
                             @endforeach
@@ -626,7 +638,7 @@
 @endif
 
 <!-- Continue to Step 2 (Approved) -->
-@if($status === 'approved' && ((auth()->id() === (int) $enrollment->created_by) || $isPrivilegedAdmin) && !$editWorkflowUnlocked)
+@if($status === 'approved' && !$bypassesApprovalWorkflow && ((auth()->id() === (int) $enrollment->created_by) || $isPrivilegedAdmin) && !$editWorkflowUnlocked)
     <div class="rounded-lg border-l-4 border-l-slate-400 bg-slate-50 p-6">
         <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>

@@ -5,8 +5,10 @@
 
 @section('content')
 <style>
-    .legacy-wrap { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; }
-    .legacy-card { border: 1px solid #dbe3ee; border-radius: 12px; background: #fff; overflow: hidden; }
+    .legacy-wrap { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 1rem; align-items: start; }
+    .legacy-wrap > .legacy-card:last-child { min-width: 0; }
+    .legacy-card { border: 1px solid #dbe3ee; border-radius: 12px; background: #fff; overflow: visible; }
+    .legacy-card.legacy-card-tabs { overflow: hidden; }
     .legacy-card-head { background: #f8fbff; border-bottom: 1px solid #dbe3ee; padding: 0.75rem 1rem; font-weight: 700; color: #0f172a; }
     .legacy-card-body { padding: 1rem; }
     .profile-photo { width: 110px; height: 110px; border-radius: 999px; border: 3px solid #ef4444; object-fit: cover; }
@@ -15,10 +17,16 @@
     .qbtn-green { background: #059669; }
     .qbtn-blue { background: #2563eb; }
     .qbtn-red { background: #dc2626; }
+    .qbtn-rose { background: #e11d48; }
     .qbtn-amber { background: #d97706; }
     .qbtn-sky { background: #0284c7; }
     .meta-item { margin: 0.65rem 0; font-size: 0.88rem; }
     .meta-item b { color: #0f172a; }
+    .doctor-profile-head { margin-top: 0.75rem; }
+    .doctor-profile-head h3 { margin-bottom: 0.35rem; }
+    .doctor-profile-line { margin: 0.15rem 0; font-size: 0.88rem; color: #475569; line-height: 1.45; }
+    .doctor-profile-line--muted { color: #64748b; }
+    .doctor-profile-meta { margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed #e2e8f0; }
     .about-row { border-bottom: 1px dashed #dbe3ee; padding: 0.6rem 0; }
     .about-row:last-child { border-bottom: none; }
 
@@ -64,10 +72,11 @@
         --mini-table-head-align: right;
         --mini-table-cell-align: right;
     }
-    .legacy-tab-panel { overflow-x: auto; }
-    .legacy-tab-panel .mini-table { min-width: 980px; }
-    .legacy-tab-panel .mini-table th,
-    .legacy-tab-panel .mini-table td { white-space: nowrap; }
+    .legacy-tab-panel:not(#tab-documents) { overflow-x: auto; }
+    .legacy-tab-panel:not(#tab-documents) .mini-table { min-width: 980px; }
+    .legacy-tab-panel:not(#tab-documents) .mini-table th,
+    .legacy-tab-panel:not(#tab-documents) .mini-table td { white-space: nowrap; }
+    #tab-documents.legacy-tab-panel { overflow: visible; max-width: 100%; }
     .empty-note { padding: 1rem; border: 1px dashed #cbd5e1; border-radius: 8px; color: #64748b; background: #f8fafc; }
 
     .modal-backdrop-lite { position: fixed; inset: 0; background: rgba(2, 6, 23, 0.65); display: none; align-items: center; justify-content: center; z-index: 80; padding: 1rem; }
@@ -124,12 +133,40 @@
                         </div>
                     </div>
 
-                    <h3 class="mt-3 text-center text-lg font-bold text-slate-900">{{ $doctor->doctor_name ?? 'N/A' }}</h3>
-                    <p class="text-center text-sm text-slate-600"><b>{{ $doctor->specialization->name ?? 'N/A' }}</b></p>
+                    @php
+                        $profileSpec = $doctor->displaySpecializationName();
+                        $profileReg = $doctor->formattedRegistrationLine();
+                        $profileQual = $doctor->formattedQualificationWithYears();
+                        $profileLocation = $doctor->formattedLocation();
+                    @endphp
+                    <div class="doctor-profile-head text-center">
+                        <h3 class="text-lg font-bold text-slate-900">{{ $doctor->doctor_name ?: 'Not Provided' }}</h3>
+                        @if($profileSpec || $profileReg)
+                            <p class="doctor-profile-line">
+                                @if($profileSpec){{ $profileSpec }}@endif
+                                @if($profileSpec && $profileReg)<span class="text-slate-400"> • </span>@endif
+                                @if($profileReg){{ $profileReg }}@endif
+                            </p>
+                        @endif
+                        @if($profileQual)
+                            <p class="doctor-profile-line doctor-profile-line--muted">{{ $profileQual }}</p>
+                        @endif
+                        @if($profileLocation)
+                            <p class="doctor-profile-line doctor-profile-line--muted">{{ $profileLocation }}</p>
+                        @endif
+                    </div>
 
-                    <p class="meta-item text-center"><b>Money Receipt No:</b> {{ $doctor->money_rc_no ?? 'Pending' }}</p>
-                    <p class="meta-item text-center"><b>Membership No:</b> {{ $doctor->customer_id_no ?? 'N/A' }}</p>
-                    <p class="meta-item text-center"><b>{{ $doctor->doctor_email ?? 'info@medeforum.com' }}</b></p>
+                    <div class="doctor-profile-meta">
+                        @if(filled($doctor->money_rc_no))
+                            <p class="meta-item text-center"><b>Money Receipt No:</b> {{ $doctor->money_rc_no }}</p>
+                        @endif
+                        @if(filled($doctor->customer_id_no))
+                            <p class="meta-item text-center"><b>Membership No:</b> {{ $doctor->customer_id_no }}</p>
+                        @endif
+                        @if(filled($doctor->doctor_email))
+                            <p class="meta-item text-center">{{ $doctor->doctor_email }}</p>
+                        @endif
+                    </div>
                 </div>
             </div>
 
@@ -157,7 +194,7 @@
             </div>
         </div>
 
-        <div class="legacy-card" data-active-tab="{{ $activeTab ?? 'details' }}">
+        <div class="legacy-card legacy-card-tabs" data-active-tab="{{ $activeTab ?? 'details' }}">
             <div class="legacy-tabs">
                 <button class="legacy-tab-btn" data-tab="details">Details</button>
                 <button class="legacy-tab-btn" data-tab="documents">Document</button>
@@ -178,12 +215,12 @@
                         <div class="kv-item"><div class="kv-key">Policy No</div><div class="kv-val">{{ $doctor->money_rc_no ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Address</div><div class="kv-val">{{ $doctor->doctor_address ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Date of birth</div><div class="kv-val">{{ optional($doctor->dob)->format('d/m/Y') ?? 'N/A' }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Qualification</div><div class="kv-val">{{ is_array($doctor->qualification) ? implode(', ', array_map(fn($p) => is_array($p) ? ($p['name'] ?? '') : (string)$p, $doctor->qualification)) : ($doctor->qualification ?? 'N/A') }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Qualification</div><div class="kv-val">{{ $doctor->formattedQualification() ?? 'Not Provided' }}</div></div>
                     </div>
                     <div>
-                        <div class="kv-item"><div class="kv-key">Qualification year</div><div class="kv-val">{{ is_array($doctor->qualification_year) ? implode(', ', $doctor->qualification_year) : ($doctor->qualification_year ?? 'N/A') }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Medical Registration</div><div class="kv-val">{{ $doctor->medical_registration_no ?? 'N/A' }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Year of Registration</div><div class="kv-val">{{ $doctor->year_of_reg ?? 'N/A' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Qualification year</div><div class="kv-val">{{ $doctor->formattedQualificationYears() ?? 'Not Provided' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Medical Registration</div><div class="kv-val">{{ $doctor->medical_registration_no ?: 'Not Provided' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Year of Registration</div><div class="kv-val">{{ $doctor->year_of_reg ?: 'Not Provided' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Payment Mode</div><div class="kv-val">{{ $doctor->payment_mode ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Plan</div><div class="kv-val">{{ $planName }}</div></div>
                         <div class="kv-item"><div class="kv-key">Payment date</div><div class="kv-val">{{ optional($doctor->payment_cash_date)->format('d/m/Y') ?? 'N/A' }}</div></div>
@@ -192,75 +229,12 @@
             </div>
 
             <div id="tab-documents" class="legacy-tab-panel">
-                <h4 class="text-sm font-bold text-slate-900 mb-3">Upload document</h4>
-                <form action="{{ route('admin.doctors.documents.store', $doctor->id) }}" method="POST" enctype="multipart/form-data" class="legacy-upload-form">
-                    @csrf
-                    @php
-                        $defaultDocumentTitle = old('document_title', 'Documents dispatched for enrollment processing.');
-                    @endphp
-                    <div class="kv-grid">
-                        <div>
-                            <div class="kv-item">
-                                <div class="kv-key">Document type</div>
-                                <select class="modal-input" id="doctype" name="document_type" required>
-                                    <option value="">Select document type</option>
-                                    <option value="2">Policy</option>
-                                    <option value="4">Cheque</option>
-                                    <option value="6">Form</option>
-                                    <option value="7">Consignment form</option>
-                                    <option value="8">Other Documents</option>
-                                </select>
-                            </div>
-                            <div class="kv-item">
-                                <div class="kv-key">Document title</div>
-                                <input type="text" class="modal-input" id="doc_ttl" name="document_title" value="{{ $defaultDocumentTitle }}" required>
-                            </div>
-                            <div class="kv-item">
-                                <div class="kv-key">Document file</div>
-                                <input type="file" class="modal-input" id="doc_file" name="document_file" required>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mt-3">
-                        <button type="submit" class="qbtn qbtn-blue">Submit</button>
-                    </div>
-                </form>
-
-                <div class="mt-6">
-                    <h4 class="text-sm font-bold text-slate-900 mb-3">Documents of {{ $doctor->doctor_name ?? 'Doctor' }}</h4>
-                    <table class="mini-table">
-                        <thead>
-                            <tr>
-                                <th>SL No</th>
-                                <th>Document</th>
-                                <th>Title</th>
-                                <th>Document year</th>
-                                <th>Uploaded by</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($documents as $document)
-                                <tr>
-                                    <td>{{ $loop->iteration }}</td>
-                                    <td>{{ strtoupper(pathinfo($document->document_file, PATHINFO_EXTENSION) ?: 'FILE') }}</td>
-                                    <td>{{ $document->document_title }}</td>
-                                    <td>{{ optional($document->created_at)->format('Y') ?? 'N/A' }}</td>
-                                    <td>{{ $document->creator->name ?? 'Super Admin' }}</td>
-                                    <td>
-                                        <a href="{{ asset('storage/' . $document->document_file) }}" class="qbtn qbtn-green" target="_blank" title="View"><i class="ri-eye-line"></i></a>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="6">
-                                        <div class="empty-note">No document available in table.</div>
-                                    </td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                @include('admin.doctors.partials.documents-panel', [
+                    'doctor' => $doctor,
+                    'groupedDocuments' => $groupedDocuments ?? [],
+                    'documentCategoryLabels' => $documentCategoryLabels ?? [],
+                    'canVerifyDocuments' => $canVerifyDocuments ?? false,
+                ])
             </div>
 
             <div id="tab-cases" class="legacy-tab-panel">

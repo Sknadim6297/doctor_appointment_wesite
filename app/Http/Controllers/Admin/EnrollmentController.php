@@ -13,6 +13,7 @@ use App\Models\NormalPlan;
 use App\Models\Specialization;
 use App\Services\AdminAccessService;
 use App\Services\ActivityLogService;
+use App\Services\DoctorDocumentService;
 use App\Services\EnrollmentEditAccessService;
 use App\Services\LocationService;
 use App\Support\EnrollmentWorkflow;
@@ -36,6 +37,7 @@ class EnrollmentController extends Controller
         private readonly ActivityLogService $activityLogService,
         private readonly AdminAccessService $adminAccessService,
         private readonly EnrollmentEditAccessService $enrollmentEditAccessService,
+        private readonly DoctorDocumentService $doctorDocumentService,
     )
     {
     }
@@ -262,6 +264,7 @@ class EnrollmentController extends Controller
         $validated = $this->validatedEnrollmentData($request);
 
         $user = Auth::user();
+        $isSuperAdmin = $this->isSuperAdminUser($user);
         $agentDetails = $this->currentUserAgentDetails($user);
         $workflowEnrollmentId = (int) $request->input('workflow_enrollment_id', 0);
         $workflowDraft = $workflowEnrollmentId > 0 ? Enrollment::find($workflowEnrollmentId) : null;
@@ -273,10 +276,16 @@ class EnrollmentController extends Controller
         $validated['agent_name'] = $agentDetails['name'];
         $validated['agent_phone_no'] = $agentDetails['phone'];
         $validated['current_step'] = 2;
-        $validated['workflow_status'] = EnrollmentWorkflow::PENDING_APPROVAL;
+        $validated['workflow_status'] = $isSuperAdmin ? EnrollmentWorkflow::IN_PROGRESS : EnrollmentWorkflow::PENDING_APPROVAL;
         $validated['is_step_incomplete'] = true;
         $validated['last_activity_at'] = now();
         $validated['completed_steps'] = [1];
+
+        if ($isSuperAdmin) {
+            $validated['status'] = 'approved';
+            $validated['approved_by'] = $user?->id;
+            $validated['approved_at'] = now();
+        }
 
         if (empty($validated['customer_id_no'])) {
             $validated['customer_id_no'] = $this->generateCustomerId();
@@ -298,18 +307,20 @@ class EnrollmentController extends Controller
         $enrollment = null;
         $validated['draft_data'] = $this->mergeWorkflowDraftData($workflowDraft?->draft_data, 'step1', $validated);
 
-        DB::transaction(function () use (&$enrollment, $validated, $workflowDraft, $user, $request): void {
+        DB::transaction(function () use (&$enrollment, $validated, $workflowDraft, $user, $request, $isSuperAdmin): void {
             if ($workflowDraft) {
                 $workflowDraft->fill($validated);
                 $workflowDraft->save();
                 $enrollment = $workflowDraft;
             } else {
                 $enrollment = Enrollment::create(array_merge($validated, [
-                    'status' => 'pending',
-                    'approved_by' => null,
-                    'approved_at' => null,
+                    'status' => $isSuperAdmin ? 'approved' : 'pending',
+                    'approved_by' => $isSuperAdmin ? $user?->id : null,
+                    'approved_at' => $isSuperAdmin ? now() : null,
                 ]));
             }
+
+            $this->doctorDocumentService->persistEnrollmentStep1Documents($request, $enrollment);
 
             $this->activityLogService->log(
                 $request,
@@ -330,7 +341,7 @@ class EnrollmentController extends Controller
 
         return redirect()
             ->route('admin.enrollment.step2', $enrollment)
-            ->with('success', 'Enrollment draft saved. Continue with the workflow from the same step.');
+            ->with('success', $isSuperAdmin ? 'Enrollment saved successfully.' : 'Enrollment draft saved. Continue with the workflow from the same step.');
     }
 
     /**
@@ -338,7 +349,9 @@ class EnrollmentController extends Controller
      */
     public function edit($id)
     {
-        $enrollment = Enrollment::findOrFail($id);
+        $enrollment = Enrollment::query()
+            ->with(['doctorDocuments' => fn ($q) => $q->where('is_active', true)->with('creator')->orderByDesc('id')])
+            ->findOrFail($id);
         $this->authorizeEnrollmentAccess($enrollment);
 
         if ($this->shouldForceReadOnly($enrollment)) {
@@ -350,6 +363,9 @@ class EnrollmentController extends Controller
         if ($redirect = $this->enrollmentEditAccessService->assertMayPerformEdit(request(), $enrollment, Auth::user())) {
             return $redirect;
         }
+
+        $this->doctorDocumentService->syncMissingWorkflowDocuments($enrollment);
+        $enrollment->load(['doctorDocuments' => fn ($q) => $q->where('is_active', true)->with('creator')->orderByDesc('id')]);
 
         $specializations = Specialization::orderBy('name')->get();
         $countries = LocationService::countries();
@@ -384,6 +400,8 @@ class EnrollmentController extends Controller
                 ? route('admin.enrollment.legacy-update', $enrollment->id)
                 : route('admin.enrollment.update', $enrollment->id),
             'isSuperAdmin' => $this->isSuperAdminUser(Auth::user()),
+            'existingDocuments' => $enrollment->doctorDocuments,
+            'documentCategoryLabels' => \App\Support\DoctorDocumentCatalog::categoryLabels(),
         ]);
     }
 
@@ -408,12 +426,14 @@ class EnrollmentController extends Controller
         $validated = $this->validatedEnrollmentData($request, $enrollment);
         $validated['bond_to_mail'] = isset($validated['bond_to_mail']) && $validated['bond_to_mail'] === 'Y';
 
-        $protectedEdit = !$this->isPrivilegedAdminUser(Auth::user())
+        $protectedEdit = !$this->isSuperAdminUser(Auth::user())
             && $this->enrollmentEditAccessService->requiresOtpGuard($enrollment);
 
         $before = $enrollment->only(array_keys($validated));
 
         $enrollment->update($validated);
+
+        $this->doctorDocumentService->persistEnrollmentStep1Documents($request, $enrollment);
 
         $metadata = [
             'doctor_name' => $enrollment->doctor_name,
@@ -687,10 +707,12 @@ class EnrollmentController extends Controller
         );
 
         $enrollment = Enrollment::query()
-            ->with(['specialization', 'creator', 'approver', 'agent', 'policyReceipts', 'doctorDocuments'])
+            ->with(['specialization', 'creator', 'approver', 'agent', 'policyReceipts', 'doctorDocuments.creator', 'doctorDocuments.verifier'])
             ->findOrFail($id);
 
         $this->authorizeEnrollmentAccess($enrollment);
+
+        $this->doctorDocumentService->syncMissingWorkflowDocuments($enrollment);
 
         $activityTimeline = AdminActivityLog::query()
             ->with(['actor:id,name,email,role', 'owner:id,name,email,role'])
@@ -707,6 +729,7 @@ class EnrollmentController extends Controller
         $workflowSteps = $this->buildWorkflowSteps($enrollment);
 
         $currentUser = Auth::user();
+        $isSuperAdmin = $this->isSuperAdminUser($currentUser);
         $isPrivilegedAdmin = $this->isPrivilegedAdminUser($currentUser);
         $wf = $enrollment->normalizedWorkflowStatus();
         $atApprovalGate = $enrollment->status === 'pending'
@@ -715,13 +738,17 @@ class EnrollmentController extends Controller
                 in_array($wf, EnrollmentWorkflow::gateStatuses(), true)
                 || ($wf === EnrollmentWorkflow::IN_PROGRESS && (int) ($enrollment->current_step ?? 1) >= 2)
             );
-        $canShowApprovalPanel = $isPrivilegedAdmin && $atApprovalGate;
+        $canShowApprovalPanel = !$isSuperAdmin && $isPrivilegedAdmin && $atApprovalGate;
         $canReturnForCorrection = $canShowApprovalPanel;
         $editAccessState = $this->enrollmentEditAccessService->viewState($enrollment, $currentUser);
         $editPathLocked = ($editAccessState['locked'] ?? false) && !($editAccessState['session_active'] ?? false);
         $canResumeWorkflow = !$this->shouldForceReadOnly($enrollment)
             && $this->adminAccessService->hasPrivilege($currentUser, 'enrollment', 'edit')
             && !$editPathLocked;
+        $bypassesApprovalWorkflow = $this->bypassesEnrollmentApprovalWorkflow($enrollment, $currentUser);
+        $canProceedToStep2 = ($bypassesApprovalWorkflow || $enrollment->status === 'approved')
+            && ((Auth::id() === (int) $enrollment->created_by) || $isPrivilegedAdmin || $isSuperAdmin)
+            && ($bypassesApprovalWorkflow || !$editPathLocked);
 
         return view('admin.enrollment.details', compact(
             'enrollment',
@@ -732,6 +759,9 @@ class EnrollmentController extends Controller
             'canReturnForCorrection',
             'canResumeWorkflow',
             'isPrivilegedAdmin',
+            'isSuperAdmin',
+            'bypassesApprovalWorkflow',
+            'canProceedToStep2',
             'editAccessState'
         ));
     }
@@ -762,7 +792,7 @@ class EnrollmentController extends Controller
 
         $this->authorizeEnrollmentAccess($enrollment);
 
-        if ($enrollment->status !== 'approved') {
+        if ($enrollment->status !== 'approved' && !$this->bypassesEnrollmentApprovalWorkflow($enrollment, Auth::user())) {
             return redirect()
                 ->route('admin.my-enrollments.show', $enrollment->id)
                 ->with('info', 'PDF download is available after approval.');
@@ -833,28 +863,7 @@ class EnrollmentController extends Controller
             }
         }
 
-        if (isset($payload['qualification_names']) || isset($payload['qualification_years'])) {
-            $names = array_values((array) ($payload['qualification_names'] ?? []));
-            $years = array_values((array) ($payload['qualification_years'] ?? []));
-            $qualifications = [];
-            $count = max(count($names), count($years));
-
-            for ($i = 0; $i < $count; $i++) {
-                $name = trim((string) ($names[$i] ?? ''));
-                $year = trim((string) ($years[$i] ?? ''));
-
-                if ($name !== '' || $year !== '') {
-                    $qualifications[] = [
-                        'name' => $name,
-                        'year' => $year !== '' ? (int) $year : null,
-                    ];
-                }
-            }
-
-            $payload['qualification'] = $qualifications;
-            $payload['qualification_year'] = array_values(array_filter(array_map(fn ($row) => $row['year'] ?? null, $qualifications), fn ($value) => $value !== null));
-        }
-
+        $payload = $this->mergeQualificationFields($request, $payload);
         $payload['bond_to_mail'] = isset($payload['bond_to_mail']) && $payload['bond_to_mail'] === 'Y';
 
         return $payload;
@@ -941,18 +950,20 @@ class EnrollmentController extends Controller
             ], 422);
         }
 
+        $user = Auth::user();
+        $isSuperAdmin = $this->isSuperAdminUser($user);
+
         if ($enrollment) {
             $this->authorizeEnrollmentAccess($enrollment);
-            if ($json = $this->enrollmentEditAccessService->assertMayPerformEditJson($request, $enrollment, Auth::user())) {
+
+            if (!$isSuperAdmin && $json = $this->enrollmentEditAccessService->assertMayPerformEditJson($request, $enrollment, $user)) {
                 return $json;
             }
         }
-
-        $user = Auth::user();
         $agentDetails = $this->currentUserAgentDetails($user);
         $payload = $this->workflowDraftPayload($request, $step);
 
-        DB::transaction(function () use (&$enrollment, $payload, $step, $user, $agentDetails, $request): void {
+        DB::transaction(function () use (&$enrollment, $payload, $step, $user, $agentDetails, $request, $isSuperAdmin): void {
             if (!$enrollment) {
                 $enrollment = Enrollment::create([
                     'customer_id_no' => $payload['customer_id_no'] ?? $this->generateCustomerId(),
@@ -992,8 +1003,8 @@ class EnrollmentController extends Controller
                     'created_by_role' => $this->resolveCreatorRole($user),
                     'agent_name' => $agentDetails['name'],
                     'agent_phone_no' => $agentDetails['phone'],
-                    'status' => 'pending',
-                    'workflow_status' => 'draft',
+                    'status' => $isSuperAdmin ? 'approved' : 'pending',
+                    'workflow_status' => $isSuperAdmin ? EnrollmentWorkflow::IN_PROGRESS : 'draft',
                     'current_step' => $step,
                     'is_step_incomplete' => true,
                     'last_activity_at' => now(),
@@ -1006,12 +1017,22 @@ class EnrollmentController extends Controller
             $draftData = $this->mergeWorkflowDraftData($draftData, 'step' . $step, $payload);
 
             $enrollment->fill([
-                'workflow_status' => $step === 1 ? 'draft' : 'in_progress',
+                'workflow_status' => $isSuperAdmin
+                    ? EnrollmentWorkflow::IN_PROGRESS
+                    : ($step === 1 ? EnrollmentWorkflow::DRAFT : EnrollmentWorkflow::IN_PROGRESS),
                 'current_step' => $step,
                 'is_step_incomplete' => true,
                 'last_activity_at' => now(),
                 'draft_data' => $draftData,
             ]);
+
+            if ($isSuperAdmin) {
+                $enrollment->fill([
+                    'status' => 'approved',
+                    'approved_by' => $enrollment->approved_by ?? $user?->id,
+                    'approved_at' => $enrollment->approved_at ?? now(),
+                ]);
+            }
 
             if ($step === 1) {
                 $enrollment->fill(Arr::only($payload, [
@@ -1026,19 +1047,6 @@ class EnrollmentController extends Controller
 
             $enrollment->save();
 
-            $this->activityLogService->log(
-                $request,
-                'enrollment',
-                'autosave',
-                $enrollment,
-                $user,
-                'Auto-saved enrollment workflow draft.',
-                [
-                    'workflow_step' => $step,
-                    'workflow_status' => $enrollment->workflow_status,
-                    'current_step' => $enrollment->current_step,
-                ]
-            );
         });
 
         return response()->json([
@@ -1054,6 +1062,10 @@ class EnrollmentController extends Controller
     public function resume(Enrollment $enrollment)
     {
         $this->authorizeEnrollmentAccess($enrollment);
+
+        if ($this->isSuperAdminUser(Auth::user())) {
+            return redirect()->to($this->workflowResumeUrl($enrollment));
+        }
 
         if ($this->shouldForceReadOnly($enrollment)) {
             return redirect()
@@ -1074,6 +1086,15 @@ class EnrollmentController extends Controller
 
         if ($redirect = $this->ensureEnrollmentStepsUnlocked($enrollment)) {
             return $redirect;
+        }
+
+        if ($this->isSuperAdminUser(Auth::user())) {
+            $this->markWorkflowStep($enrollment, 2, $enrollment->workflow_status ?: EnrollmentWorkflow::IN_PROGRESS, [1]);
+
+            return view('admin.enrollment.step2', [
+                'enrollment' => $enrollment,
+                'workflowSteps' => $this->buildWorkflowSteps($enrollment),
+            ]);
         }
 
         if ($this->shouldForceReadOnly($enrollment)) {
@@ -1102,7 +1123,7 @@ class EnrollmentController extends Controller
     {
         $this->authorizeEnrollmentAccess($enrollment);
 
-        if ($enrollment->status !== 'approved') {
+        if ($enrollment->status !== 'approved' && !$this->isSuperAdminUser(Auth::user())) {
             return redirect()
                 ->route('admin.enrollment.details', $enrollment)
                 ->with('info', 'This enrollment is pending approval and is available in read-only mode.');
@@ -1134,6 +1155,19 @@ class EnrollmentController extends Controller
 
         if (is_array($qualificationYear)) {
             $qualificationYear = implode(', ', array_filter($qualificationYear));
+        }
+
+        $qualification = $enrollment->qualification ?? 'N/A';
+        if (is_array($qualification)) {
+            $qualification = implode(', ', array_filter(array_map(function ($item) {
+                if (is_array($item)) {
+                    return (string) ($item['name'] ?? '');
+                }
+
+                return (string) $item;
+            }, $qualification)));
+
+            $qualification = $qualification !== '' ? $qualification : 'N/A';
         }
 
         $amount = (int) round((float) ($enrollment->total_amount ?? $enrollment->payment_amount ?? 0));
@@ -1170,7 +1204,7 @@ class EnrollmentController extends Controller
             'medical_reg_no' => $enrollment->medical_registration_no ?? 'N/A',
             'year_of_reg' => $enrollment->year_of_reg ?? 'N/A',
             'speciliazition_name' => $enrollment->specialization?->name ?? 'N/A',
-            'doctor_qualification' => $enrollment->qualification ?? 'N/A',
+            'doctor_qualification' => $qualification,
             'doctor_qualification_year' => $qualificationYear ?: 'N/A',
             'recipet_no' => $enrollment->money_rc_no ?? $enrollment->customer_id_no ?? $enrollment->id,
             'payment_method' => (string) ($enrollment->payment_method ?? ''),
@@ -1240,6 +1274,21 @@ class EnrollmentController extends Controller
             return $redirect;
         }
 
+        if ($this->isSuperAdminUser(Auth::user())) {
+            $this->markWorkflowStep($enrollment, 3, $enrollment->workflow_status ?: EnrollmentWorkflow::IN_PROGRESS, [1, 2]);
+
+            $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
+                ->orderByDesc('id')
+                ->get();
+
+            return view('admin.enrollment.step3', [
+                'enrollment' => $enrollment,
+                'policyReceipts' => $policyReceipts,
+                'workflowSteps' => $this->buildWorkflowSteps($enrollment),
+                'draftStep3' => data_get($enrollment->draft_data, 'step3', []),
+            ]);
+        }
+
         if ($this->shouldForceReadOnly($enrollment)) {
             return redirect()
                 ->route('admin.enrollment.details', $enrollment)
@@ -1250,7 +1299,7 @@ class EnrollmentController extends Controller
             return $redirect;
         }
 
-        if ((int) ($enrollment->current_step ?? 1) < 3) {
+        if ((int) ($enrollment->current_step ?? 1) < 3 && !$this->isSuperAdminUser(Auth::user())) {
             return redirect()->route('admin.enrollment.resume', $enrollment);
         }
 
@@ -1276,6 +1325,21 @@ class EnrollmentController extends Controller
             return $redirect;
         }
 
+        if ($this->isSuperAdminUser(Auth::user())) {
+            $this->markWorkflowStep($enrollment, 4, $enrollment->workflow_status ?: EnrollmentWorkflow::IN_PROGRESS, [1, 2, 3]);
+
+            $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
+                ->orderByDesc('id')
+                ->get();
+
+            return view('admin.enrollment.step4', [
+                'enrollment' => $enrollment,
+                'policyReceipts' => $policyReceipts,
+                'workflowSteps' => $this->buildWorkflowSteps($enrollment),
+                'draftStep4' => data_get($enrollment->draft_data, 'step4', []),
+            ]);
+        }
+
         if ($this->shouldForceReadOnly($enrollment)) {
             return redirect()
                 ->route('admin.enrollment.details', $enrollment)
@@ -1286,7 +1350,7 @@ class EnrollmentController extends Controller
             return $redirect;
         }
 
-        if ((int) ($enrollment->current_step ?? 1) < 4) {
+        if ((int) ($enrollment->current_step ?? 1) < 4 && !$this->isSuperAdminUser(Auth::user())) {
             return redirect()->route('admin.enrollment.resume', $enrollment);
         }
 
@@ -1308,7 +1372,7 @@ class EnrollmentController extends Controller
     {
         $this->authorizeEnrollmentAccess($enrollment);
 
-        if ($enrollment->status !== 'approved') {
+        if ($enrollment->status !== 'approved' && !$this->isSuperAdminUser(Auth::user())) {
             return redirect()
                 ->route('admin.enrollment.details', $enrollment)
                 ->with('info', 'This enrollment is pending approval and is available in read-only mode.');
@@ -1446,10 +1510,14 @@ class EnrollmentController extends Controller
                 'nullable',
                 'email',
                 'max:200',
-                Rule::unique('enrollments', 'doctor_email')->ignore($enrollment?->id),
+                Rule::unique('enrollments', 'doctor_email')->ignore($enrollment?->id ?? 0),
             ],
-            'dob'                    => 'nullable|date',
-            'qualification'          => 'nullable|string|max:200',
+            'dob'                    => 'nullable|string',
+            'qualification_names'    => 'nullable|array',
+            'qualification_names.*'  => 'nullable|string|max:200',
+            'qualification_years'    => 'nullable|array',
+            'qualification_years.*'  => 'nullable|integer|min:1950|max:' . ((int) date('Y') + 1),
+            'qualification'          => 'nullable',
             'qualification_year'     => 'nullable|array',
             'qualification_year.*'   => 'nullable|integer',
             'medical_registration_no'=> 'nullable|string|max:100',
@@ -1488,11 +1556,51 @@ class EnrollmentController extends Controller
 
         $validated = $validator->validate();
 
+        $validated = $this->mergeQualificationFields($request, $validated);
+
+        if (!empty($validated['dob'])) {
+            $validated['dob'] = $this->normalizeWorkflowDate($validated['dob']);
+        }
+
         $totalAmount = (float) ($validated['total_amount'] ?? 0);
         $serviceAmount = (float) ($validated['service_amount'] ?? 0);
         $validated['payment_amount'] = round(max($totalAmount - $serviceAmount, 0), 2);
 
+        unset($validated['qualification_names'], $validated['qualification_years']);
+
         return $validated;
+    }
+
+    private function mergeQualificationFields(Request $request, array $payload): array
+    {
+        if (!$request->has('qualification_names') && !$request->has('qualification_years')) {
+            return $payload;
+        }
+
+        $names = array_values((array) $request->input('qualification_names', []));
+        $years = array_values((array) $request->input('qualification_years', []));
+        $qualifications = [];
+        $count = max(count($names), count($years));
+
+        for ($i = 0; $i < $count; $i++) {
+            $name = trim((string) ($names[$i] ?? ''));
+            $year = trim((string) ($years[$i] ?? ''));
+
+            if ($name !== '' || $year !== '') {
+                $qualifications[] = [
+                    'name' => $name,
+                    'year' => $year !== '' ? (int) $year : null,
+                ];
+            }
+        }
+
+        $payload['qualification'] = $qualifications;
+        $payload['qualification_year'] = array_values(array_filter(
+            array_map(fn (array $row) => $row['year'] ?? null, $qualifications),
+            fn ($value) => $value !== null
+        ));
+
+        return $payload;
     }
 
     private function resolveCreatorRole($user): string
@@ -1543,7 +1651,7 @@ class EnrollmentController extends Controller
     {
         $user = Auth::user();
 
-        if ($this->isPrivilegedAdminUser($user) || $this->adminAccessService->hasPrivilege($user, 'enrollment', 'approve')) {
+        if ($this->bypassesEnrollmentApprovalWorkflow($enrollment, $user)) {
             return null;
         }
 
@@ -1641,7 +1749,7 @@ class EnrollmentController extends Controller
 
     private function shouldForceReadOnly(Enrollment $enrollment): bool
     {
-        if ($this->isPrivilegedAdminUser(Auth::user())) {
+        if ($this->bypassesEnrollmentApprovalWorkflow($enrollment, Auth::user())) {
             return false;
         }
 
@@ -1674,5 +1782,28 @@ class EnrollmentController extends Controller
             in_array(($user->role ?? null), ['admin', 'super_admin'], true) ||
             (method_exists($user, 'hasAdminRole') && $user->hasAdminRole(['admin', 'super_admin']))
         ));
+    }
+
+    private function bypassesEnrollmentApprovalWorkflow(Enrollment $enrollment, ?User $user): bool
+    {
+        if ($this->isSuperAdminUser($user)) {
+            return true;
+        }
+
+        if (($enrollment->created_by_role ?? '') === 'super_admin') {
+            return true;
+        }
+
+        if ($enrollment->status === 'approved' && $enrollment->approved_by) {
+            $approver = $enrollment->relationLoaded('approver')
+                ? $enrollment->approver
+                : User::query()->find($enrollment->approved_by);
+
+            if ($this->isSuperAdminUser($approver)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

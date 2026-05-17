@@ -34,12 +34,17 @@
         in_array(($currentUser->role ?? null), ['admin', 'super_admin'], true) ||
         (method_exists($currentUser, 'hasAdminRole') && $currentUser->hasAdminRole(['admin', 'super_admin']))
     );
-    $editWorkflowUnlocked = $isPrivilegedAdmin || empty($ea['locked']) || !empty($ea['session_active']);
+    $isSuperAdmin = $currentUser && (
+        (($currentUser->role ?? null) === 'super_admin') ||
+        (method_exists($currentUser, 'hasAdminRole') && $currentUser->hasAdminRole('super_admin'))
+    );
+    $bypassesApprovalWorkflow = $isSuperAdmin || ($enrollment->created_by_role ?? '') === 'super_admin';
+    $editWorkflowUnlocked = $bypassesApprovalWorkflow || empty($ea['locked']) || !empty($ea['session_active']);
 @endphp
 
 <div class="mb-6 flex items-center gap-3">
     <a href="{{ route('admin.my-enrollments.index') }}" class="btn btn-ghost">← Back to My Enrollments</a>
-    @if($status === 'approved')
+    @if($status === 'approved' || $bypassesApprovalWorkflow)
         <a href="{{ route('admin.my-enrollments.pdf', $enrollment) }}" class="btn btn-primary">Download PDF</a>
     @else
         <span class="btn btn-primary cursor-not-allowed opacity-50" aria-disabled="true" title="PDF download is available after approval">Download PDF</span>
@@ -52,7 +57,7 @@
     @endif
 </div>
 
-@if(!empty($ea['locked']) && empty($ea['session_active']))
+@if(!empty($ea['locked']) && empty($ea['session_active']) && !$bypassesApprovalWorkflow)
     <div class="mb-4 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
         <strong>View only.</strong> Approved or submitted enrollments cannot be edited until an administrator verifies an OTP sent to their email.
     </div>
@@ -89,7 +94,7 @@
         </div>
     </div>
 
-    @if($status === 'pending')
+    @if($status === 'pending' && !$bypassesApprovalWorkflow)
         <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <strong>Waiting for Approval:</strong> This enrollment is pending review. Step 2 is locked until approval.
         </div>
@@ -256,7 +261,7 @@
     </div>
 </div>
 
-@if($status === 'approved' && !$editWorkflowUnlocked)
+@if($status === 'approved' && !$bypassesApprovalWorkflow && !$editWorkflowUnlocked)
     <div class="mt-8 rounded-lg border-l-4 border-l-slate-400 bg-slate-50 p-6">
         <div>
             <h3 class="mb-2 text-xl font-bold text-slate-900">Workflow locked</h3>

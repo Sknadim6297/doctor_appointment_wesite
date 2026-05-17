@@ -108,7 +108,7 @@ class EnrollmentEditAccessService
     {
         $this->expireStaleSessions();
 
-        $locked = $viewer && !$this->isPrivilegedAdmin($viewer) && $this->requiresOtpGuard($enrollment);
+        $locked = $viewer && !$this->isSuperAdmin($viewer) && $this->requiresOtpGuard($enrollment);
         $session = $viewer ? $this->activeSessionFor($enrollment, $viewer) : null;
         $pending = $this->pendingOtpSessionForEnrollment($enrollment);
 
@@ -118,13 +118,13 @@ class EnrollmentEditAccessService
             'session_expires_at' => $session?->session_expires_at,
             'pending_otp' => (bool) $pending,
             'requester' => $pending?->requester,
-            'can_request' => (bool) ($viewer && !$this->isPrivilegedAdmin($viewer) && $locked && $this->canUserRequest($viewer, $enrollment)),
+            'can_request' => (bool) ($viewer && !$this->isSuperAdmin($viewer) && $locked && $this->canUserRequest($viewer, $enrollment)),
         ];
     }
 
     public function canUserRequest(User $user, Enrollment $enrollment): bool
     {
-        if ($this->isPrivilegedAdmin($user)) {
+        if ($this->isSuperAdmin($user)) {
             return false;
         }
 
@@ -139,8 +139,8 @@ class EnrollmentEditAccessService
 
     public function requestAccess(Request $request, Enrollment $enrollment, User $requester): array
     {
-        if ($this->isPrivilegedAdmin($requester)) {
-            return ['success' => false, 'message' => 'Administrators do not need edit access requests.'];
+        if ($this->isSuperAdmin($requester)) {
+            return ['success' => false, 'message' => 'Super Admin has direct edit access and does not need edit access requests.'];
         }
 
         if (!$this->requiresOtpGuard($enrollment)) {
@@ -297,9 +297,17 @@ class EnrollmentEditAccessService
         ));
     }
 
+    private function isSuperAdmin(?User $user): bool
+    {
+        return (bool) ($user && (
+            (($user->role ?? null) === 'super_admin') ||
+            (method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin'))
+        ));
+    }
+
     public function assertMayPerformEdit(Request $request, Enrollment $enrollment, User $user): ?\Illuminate\Http\RedirectResponse
     {
-        if ($this->isPrivilegedAdmin($user)) {
+        if ($this->isSuperAdmin($user)) {
             return null;
         }
 
@@ -318,7 +326,7 @@ class EnrollmentEditAccessService
 
     public function assertMayPerformEditJson(Request $request, Enrollment $enrollment, User $user): ?\Illuminate\Http\JsonResponse
     {
-        if ($this->isPrivilegedAdmin($user)) {
+        if ($this->isSuperAdmin($user)) {
             return null;
         }
 
