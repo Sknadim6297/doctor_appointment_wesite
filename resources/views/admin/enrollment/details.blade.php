@@ -42,18 +42,32 @@
         )
     );
     $bypassesApprovalWorkflow = $bypassesApprovalWorkflow ?? (
-        $isSuperAdmin || ($enrollment->created_by_role ?? '') === 'super_admin'
+        $isSuperAdmin || in_array($enrollment->created_by_role ?? '', ['super_admin', 'admin'], true)
     );
     $ea = $editAccessState ?? ['locked' => false, 'session_active' => false, 'session_expires_at' => null, 'pending_otp' => false, 'requester' => null, 'can_request' => false];
     $editWorkflowUnlocked = $bypassesApprovalWorkflow || empty($ea['locked']) || !empty($ea['session_active']);
-    $canProceedToStep2 = $canProceedToStep2 ?? (
-        ($bypassesApprovalWorkflow || $status === 'approved')
-        && ((auth()->id() === (int) $enrollment->created_by) || $isPrivilegedAdmin || $isSuperAdmin)
-        && $editWorkflowUnlocked
-    );
-    $backRoute = $isPrivilegedAdmin ? route('admin.enrollment.monitoring') : route('admin.enrollment');
-    $backLabel = $isPrivilegedAdmin ? 'Enrollment CRM' : 'My Enrollments';
+    $backRoute = $status === 'pending' && $isPrivilegedAdmin
+        ? route('admin.enrollment.pending')
+        : ($isPrivilegedAdmin ? route('admin.enrollment.monitoring', ['bucket' => 'incomplete']) : route('admin.my-enrollments.index'));
+    $backLabel = $status === 'pending' && $isPrivilegedAdmin
+        ? 'Pending Approvals'
+        : ($isPrivilegedAdmin ? 'Enrollment CRM' : 'My Enrollments');
+    $collapseSections = $isPrivilegedAdmin && $status !== 'pending';
+    $sectionBodyClass = $collapseSections ? 'hidden' : '';
+    $isOwner = $currentUser && (int) $enrollment->created_by === (int) $currentUser->id;
+    $showEditAccessBanner = !empty($ea['locked'])
+        && empty($ea['session_active'])
+        && !$bypassesApprovalWorkflow
+        && !$isOwner
+        && $status === 'approved';
 @endphp
+
+@if(session('success'))
+    <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">{{ session('success') }}</div>
+@endif
+@if(session('error'))
+    <div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900">{{ session('error') }}</div>
+@endif
 
 <!-- Header Navigation -->
 <div class="mb-6 flex flex-wrap items-center gap-3">
@@ -79,11 +93,31 @@
             Request edit access
         </button>
     @endif
+    @if($enrollment->isProductionActive())
+        <a href="{{ route('admin.doctors.show', $enrollment->id) }}" class="btn rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100">
+            View active doctor profile
+        </a>
+    @endif
+    @if(($canShowApprovalPanel ?? false) && $status === 'pending')
+        <a href="#approval-decision" class="btn rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">
+            Approve / Reject
+        </a>
+    @endif
 </div>
 
-@if(!empty($ea['locked']) && empty($ea['session_active']) && !$bypassesApprovalWorkflow)
+@if(!$enrollment->isProductionActive())
+    <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        @if($enrollment->normalizedWorkflowStatus() === \App\Support\EnrollmentWorkflow::COMPLETED)
+            <strong>Workflow completed.</strong> This record is not on the active Doctor List yet because required documents (Aadhaar, PAN, medical registration) still need verification.
+        @else
+            <strong>Enrollment pipeline.</strong> This record is not yet on the active Doctor List. It remains here until workflow is completed, approval is recorded, and required documents (Aadhaar, PAN, medical registration) are verified.
+        @endif
+    </div>
+@endif
+
+@if($showEditAccessBanner)
     <div class="mb-4 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-        <strong>View only.</strong> This enrollment is approved, submitted, or completed. Direct editing is disabled. Use <em>Request edit access</em> so an administrator can verify an OTP sent to their email and grant you a time-limited edit window.
+        <strong>View only.</strong> This enrollment is approved. Direct editing is disabled. Use <em>Request edit access</em> so an administrator can verify an OTP sent to their email and grant you a time-limited edit window.
     </div>
 @endif
 
@@ -159,17 +193,48 @@
         </div>
     </div>
 
+    @if($isPrivilegedAdmin && $creator)
+        <div class="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-950">
+            <p class="text-xs font-bold uppercase tracking-wide text-blue-700">Submitted by (enrollment entry)</p>
+            <p class="mt-1 text-lg font-semibold text-slate-900">{{ $creator->name ?? 'Unknown' }}</p>
+            <p class="mt-1 text-slate-700">
+                Role: <strong>{{ $enrollment->created_by_role ?: ($creator->role ?? 'employee') }}</strong>
+                @if($creator->email) · {{ $creator->email }} @endif
+                @if($creator->phone) · {{ $creator->phone }} @endif
+            </p>
+            @if($status === 'pending')
+                <p class="mt-2 text-xs text-blue-800">Review all sections below, then <strong>Approve enrollment</strong> at the bottom to unlock Steps 2–4 for this employee.</p>
+            @elseif($status === 'approved')
+                <p class="mt-2 text-xs text-blue-800">This enrollment is approved. Current workflow step: <strong>{{ (int) ($enrollment->current_step ?? 1) }} of 4</strong>.</p>
+            @endif
+        </div>
+    @endif
+
     @if($status === 'pending' && !$bypassesApprovalWorkflow)
         <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <strong>⚠️ Waiting for Approval:</strong> This enrollment is awaiting admin review and is currently locked. Step 2 is unavailable until it is approved.
+            @if($isPrivilegedAdmin)
+                <strong>Admin review:</strong> Verify proposer details, payment, and required documents (Aadhaar, PAN, medical registration) before approving.
+            @else
+                <strong>Waiting for approval:</strong> Step 2 is locked until an administrator approves this enrollment.
+            @endif
         </div>
     @elseif($status === 'approved' && !$bypassesApprovalWorkflow)
         <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            <strong>Admin has approved your enrollment.</strong> You can proceed to the next step.
+            @if($isPrivilegedAdmin && $approver)
+                <strong>Approved</strong> by {{ $approver->name }} on {{ optional($enrollment->approved_at)->format('d M Y, h:i A') ?? '—' }}. The submitting employee can continue the workflow.
+            @else
+                <strong>Admin has approved your enrollment.</strong> You can proceed to the next step.
+            @endif
         </div>
     @elseif($status === 'rejected')
         <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-            <strong>Rejected:</strong> This enrollment was rejected and is locked. Review the rejection reason below.
+            <strong>Rejected:</strong> {{ $enrollment->rejection_reason ?: 'No rejection reason recorded.' }}
+        </div>
+    @endif
+
+    @if(($isOnHold ?? false) || \App\Support\EnrollmentWorkflow::isOnHold($enrollment))
+        <div class="mt-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950">
+            <strong>On hold</strong>@if($enrollment->hold_reason) — {{ $enrollment->hold_reason }}@endif
         </div>
     @endif
 </div>
@@ -310,24 +375,12 @@
         </div>
     </div>
 
-    <!-- Draft autosave payload -->
-    @if(!empty($enrollment->draft_data))
-    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <button type="button" onclick="this.parentElement.querySelector('[data-section]').classList.toggle('hidden')" class="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-            <h3 class="text-lg font-semibold text-slate-900">Draft & autosave data (all steps)</h3>
-        </button>
-        <div data-section class="hidden border-t border-slate-200 px-6 py-4">
-            <pre class="max-h-96 overflow-auto rounded-lg bg-slate-900 p-4 text-xs text-emerald-100">{{ json_encode($enrollment->draft_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
-        </div>
-    </div>
-    @endif
-
     <!-- Section 2: Official Details -->
     <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
         <button onclick="this.parentElement.querySelector('[data-section]').classList.toggle('hidden')" class="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
             <h3 class="text-lg font-semibold text-slate-900">Official Details</h3>
         </button>
-        <div data-section class="hidden border-t border-slate-200 px-6 py-4">
+        <div data-section class="{{ $sectionBodyClass }} border-t border-slate-200 px-6 py-4">
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Customer ID No</p>
@@ -354,55 +407,8 @@
         <button onclick="this.parentElement.querySelector('[data-section]').classList.toggle('hidden')" class="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
             <h3 class="text-lg font-semibold text-slate-900">Uploaded Files & Documents</h3>
         </button>
-        <div data-section class="hidden border-t border-slate-200 px-6 py-4">
-            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <!-- Policy Receipts -->
-                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                    <div class="mb-3 flex items-center gap-2">
-                        <svg class="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h6a2 2 0 012 2v12a1 1 0 11-2 0V7h-4v9a1 1 0 11-2 0V4z"/></svg>
-                        <p class="font-semibold text-blue-900">Policy Receipts</p>
-                    </div>
-                    @if($enrollment->policyReceipts->isNotEmpty())
-                        <ul class="space-y-2">
-                            @foreach($enrollment->policyReceipts as $policyReceipt)
-                                <li class="rounded border border-slate-200 bg-white p-3 text-sm">
-                                    <div class="font-semibold text-slate-900">{{ $policyReceipt->policy_no ?: $na }}</div>
-                                    <div class="mt-1 text-xs text-slate-600">{{ optional($policyReceipt->receive_date)->format('d M Y') ?: $na }}</div>
-                                    @if($policyReceipt->policy_file)
-                                        <a class="mt-2 inline-block rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-200" href="{{ asset('storage/' . $policyReceipt->policy_file) }}" target="_blank">📥 Download</a>
-                                    @endif
-                                </li>
-                            @endforeach
-                        </ul>
-                    @else
-                        <p class="text-sm text-blue-700">No receipts uploaded.</p>
-                    @endif
-                </div>
-
-                <!-- Doctor Documents -->
-                <div class="rounded-lg border border-purple-200 bg-purple-50 p-4">
-                    <div class="mb-3 flex items-center gap-2">
-                        <svg class="h-5 w-5 text-purple-600" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h6a2 2 0 012 2v12a1 1 0 11-2 0V7h-4v9a1 1 0 11-2 0V4z"/></svg>
-                        <p class="font-semibold text-purple-900">Doctor Documents</p>
-                    </div>
-                    @if($enrollment->doctorDocuments->isNotEmpty())
-                        <ul class="space-y-2">
-                            @foreach($enrollment->doctorDocuments as $document)
-                                <li class="rounded border border-slate-200 bg-white p-3 text-sm">
-                                    <div class="font-semibold text-slate-900">{{ $document->document_title ?: $na }}</div>
-                                    <div class="mt-1 text-xs text-slate-600">{{ $document->document_type ?: $na }}</div>
-                                    @if($document->document_file)
-                                        <a class="mt-2 inline-block rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-200" href="{{ route('admin.doctors.documents.view', [$enrollment->id, $document->id]) }}" target="_blank" rel="noopener">View</a>
-                                        <a class="mt-2 inline-block rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200" href="{{ route('admin.doctors.documents.download', [$enrollment->id, $document->id]) }}">Download</a>
-                                    @endif
-                                </li>
-                            @endforeach
-                        </ul>
-                    @else
-                        <p class="text-sm text-purple-700">No documents uploaded.</p>
-                    @endif
-                </div>
-            </div>
+        <div data-section class="{{ $sectionBodyClass }} border-t border-slate-200 px-6 py-4">
+            @include('admin.enrollment.partials.documents-summary', ['enrollment' => $enrollment, 'documentSummary' => $documentSummary ?? null])
         </div>
     </div>
 
@@ -411,7 +417,7 @@
         <button onclick="this.parentElement.querySelector('[data-section]').classList.toggle('hidden')" class="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
             <h3 class="text-lg font-semibold text-slate-900">Proposer's Personal Details</h3>
         </button>
-        <div data-section class="hidden border-t border-slate-200 px-6 py-4">
+        <div data-section class="{{ $sectionBodyClass }} border-t border-slate-200 px-6 py-4">
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Full Name</p>
@@ -449,7 +455,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Year of Registration</p>
-                    <p class="mt-1 text-base font-semibold text-slate-900">{{ $enrollment->year_of_reg ?: $na }}</p>
+                    <p class="mt-1 text-base font-semibold text-slate-900">{{ $enrollment->displayYearOfReg() ?: $na }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Aadhaar Card</p>
@@ -492,7 +498,7 @@
         <button onclick="this.parentElement.querySelector('[data-section]').classList.toggle('hidden')" class="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
             <h3 class="text-lg font-semibold text-slate-900">Payment & Coverage Information</h3>
         </button>
-        <div data-section class="hidden border-t border-slate-200 px-6 py-4">
+        <div data-section class="{{ $sectionBodyClass }} border-t border-slate-200 px-6 py-4">
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Specialization</p>
@@ -508,7 +514,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Coverage/Legal Service</p>
-                    <p class="mt-1 text-base font-semibold text-slate-900">{{ $enrollment->coverage_id ?: $na }}</p>
+                    <p class="mt-1 text-base font-semibold text-slate-900">{{ $enrollment->formattedCoverageLabel() }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Insurance Amount</p>
@@ -524,7 +530,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Payment Method</p>
-                    <p class="mt-1 text-base font-semibold text-slate-900">{{ $paymentMethodLabel }}</p>
+                    <p class="mt-1 text-base font-semibold text-slate-900">{{ $enrollment->paymentMethodLabel() }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Cheque No</p>
@@ -544,7 +550,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Cash Date</p>
-                    <p class="mt-1 text-slate-900">{{ optional($enrollment->payment_cash_date)->format('d-m-Y') ?: $na }}</p>
+                    <p class="mt-1 text-slate-900">{{ $enrollment->displayDateValue('payment_cash_date', 'd-m-Y') ?: $na }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Send Bond to Email</p>
@@ -557,26 +563,52 @@
 
 <!-- Approval Actions (at gate only) -->
 @if($canShowApprovalPanel ?? false)
-    <div class="my-8 rounded-2xl border-l-4 border-l-amber-500 bg-amber-50 p-6">
-        <h3 class="mb-4 flex items-center gap-2 text-xl font-bold text-amber-900">
-            <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+    <div id="approval-decision" class="approval-decision-panel my-8 scroll-mt-6 rounded-2xl border border-amber-300 bg-white p-6 shadow-sm">
+        <h3 class="mb-2 flex items-center gap-2 text-xl font-bold text-slate-900">
+            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+                <i class="ri-shield-check-line text-lg"></i>
+            </span>
             Approval decision
         </h3>
+        <p class="mb-5 text-sm text-slate-600">Review Step 1, then approve to unlock Steps 2–4 for the employee.</p>
 
-        <div class="grid gap-4 md:grid-cols-3">
-            <button type="button" onclick="document.getElementById('approveModal').showModal()" class="rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white shadow transition hover:bg-emerald-700">
-                Approve enrollment
+        <div class="flex flex-wrap gap-3">
+            <button type="button" onclick="document.getElementById('approveModal').showModal()"
+                    class="approval-action-btn border-emerald-700 bg-emerald-600 hover:bg-emerald-700">
+                <i class="ri-check-double-line text-lg"></i> Approve enrollment
             </button>
-            <button type="button" onclick="document.getElementById('rejectModal').showModal()" class="rounded-lg bg-rose-600 px-6 py-3 font-semibold text-white shadow transition hover:bg-rose-700">
-                Reject enrollment
+            <button type="button" onclick="document.getElementById('rejectModal').showModal()"
+                    class="approval-action-btn border-rose-700 bg-rose-600 hover:bg-rose-700">
+                <i class="ri-close-circle-line text-lg"></i> Reject enrollment
             </button>
+            @if($canHoldEnrollment ?? false)
+                <button type="button" onclick="document.getElementById('holdModal').showModal()"
+                        class="approval-action-btn border-orange-700 bg-orange-600 hover:bg-orange-700">
+                    <i class="ri-pause-circle-line text-lg"></i> Hold
+                </button>
+            @endif
             @if($canReturnForCorrection ?? false)
-                <button type="button" onclick="document.getElementById('returnModal').showModal()" class="rounded-lg bg-violet-600 px-6 py-3 font-semibold text-white shadow transition hover:bg-violet-700">
-                    Send back for correction
+                <button type="button" onclick="document.getElementById('returnModal').showModal()"
+                        class="approval-action-btn border-violet-700 bg-violet-600 hover:bg-violet-700">
+                    <i class="ri-arrow-go-back-line text-lg"></i> Return for correction
                 </button>
             @endif
         </div>
     </div>
+
+    <dialog id="holdModal" class="rounded-xl border border-slate-200 shadow-2xl backdrop:bg-black/50">
+        <div class="w-full max-w-md p-6">
+            <h2 class="mb-2 text-xl font-bold text-slate-900">Place on hold</h2>
+            <form action="{{ route('admin.enrollment.hold', $enrollment->id) }}" method="post" class="space-y-4">
+                @csrf
+                <textarea name="hold_reason" class="w-full rounded-lg border border-slate-300 px-4 py-2" rows="4" placeholder="Hold reason (required)" required minlength="3"></textarea>
+                <div class="flex gap-2">
+                    <button type="button" onclick="document.getElementById('holdModal').close()" class="flex-1 rounded-lg border px-4 py-2 font-semibold">Cancel</button>
+                    <button type="submit" class="flex-1 rounded-lg bg-orange-600 px-4 py-2 font-semibold text-white">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
 
     <!-- Approve Modal -->
     <dialog id="approveModal" class="rounded-xl border border-slate-200 shadow-2xl backdrop:bg-black/50">
@@ -637,27 +669,23 @@
     </dialog>
 @endif
 
-<!-- Continue to Step 2 (Approved) -->
-@if($status === 'approved' && !$bypassesApprovalWorkflow && ((auth()->id() === (int) $enrollment->created_by) || $isPrivilegedAdmin) && !$editWorkflowUnlocked)
-    <div class="rounded-lg border-l-4 border-l-slate-400 bg-slate-50 p-6">
-        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-                <h3 class="mb-2 text-xl font-bold text-slate-900">Workflow locked</h3>
-                <p class="text-sm text-slate-700">This approved enrollment is view-only until an administrator verifies an OTP for temporary edit access. Use <strong>Request edit access</strong> above.</p>
-            </div>
-        </div>
-    </div>
-@elseif($canProceedToStep2)
-    <div class="rounded-lg border-l-4 border-l-emerald-500 bg-emerald-50 p-6">
-        <div class="flex items-center justify-between">
-            <div>
-                <h3 class="mb-2 text-xl font-bold text-emerald-900">Ready to Proceed</h3>
-                <p class="text-sm text-emerald-800">This enrollment is approved. Continue to the next step.</p>
-            </div>
-            <a href="{{ route('admin.enrollment.step2', $enrollment) }}" class="rounded-lg bg-emerald-600 px-8 py-3 font-bold text-white shadow hover:bg-emerald-700">Proceed to Step 2</a>
-        </div>
-    </div>
+@if($canReleaseHold ?? false)
+    <section class="my-8 rounded-2xl border border-orange-300 bg-orange-50 p-6">
+        <h3 class="text-lg font-bold text-orange-950">Enrollment on hold</h3>
+        <p class="mt-2 text-sm text-orange-900">{{ $enrollment->hold_reason }}</p>
+        <form action="{{ route('admin.enrollment.release-hold', $enrollment->id) }}" method="post" class="mt-4">
+            @csrf
+            <button type="submit" class="rounded-lg bg-orange-700 px-6 py-2.5 text-sm font-semibold text-white hover:bg-orange-800">Release hold</button>
+        </form>
+    </section>
 @endif
+
+@include('admin.enrollment.partials.workflow-continue-cta', [
+    'enrollment' => $enrollment,
+    'workflowContinueCta' => $workflowContinueCta ?? null,
+    'workflowLockedCta' => $workflowLockedCta ?? false,
+    'canResumeWorkflow' => $canResumeWorkflow ?? false,
+])
 
 @push('scripts')
 <script>

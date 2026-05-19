@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'super_admin' => \App\Http\Middleware\SuperAdminMiddleware::class,
             'admin.privilege' => \App\Http\Middleware\AdminPrivilegeMiddleware::class,
             'sensitive.otp' => \App\Http\Middleware\SensitiveDataOtpMiddleware::class,
+            'enrollment.access' => \App\Http\Middleware\EnsureEnrollmentRecordAccess::class,
+            'enrollment.workflow.approved' => \App\Http\Middleware\EnsureEnrollmentWorkflowApproved::class,
             'sub-admin.access-control' => \App\Http\Middleware\SubAdminAccessControl::class,
         ]);
     })

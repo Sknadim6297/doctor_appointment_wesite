@@ -92,4 +92,41 @@ class DoctorDocument extends Model
     {
         return $this->original_filename ?: $this->document_title ?: basename((string) $this->document_file);
     }
+
+    public function displayTitle(): string
+    {
+        return DoctorDocumentCatalog::humanizeTitle(
+            (string) ($this->document_title ?? ''),
+            (string) ($this->document_type ?? ''),
+            $this->source_key
+        );
+    }
+
+    public function requiresVerificationWorkflow(?Enrollment $enrollment = null): bool
+    {
+        if (DoctorDocumentCatalog::isExternalSource($this->source)) {
+            return true;
+        }
+
+        if ($this->replaces_document_id) {
+            return true;
+        }
+
+        if ($this->isRejected()) {
+            return true;
+        }
+
+        $enrollment ??= $this->relationLoaded('enrollment') ? $this->enrollment : $this->enrollment()->first();
+
+        if ($enrollment?->isAdminManaged()) {
+            return false;
+        }
+
+        return $this->isPending();
+    }
+
+    public function isTrustedAdminDocument(?Enrollment $enrollment = null): bool
+    {
+        return !$this->requiresVerificationWorkflow($enrollment);
+    }
 }

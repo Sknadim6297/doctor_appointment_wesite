@@ -481,7 +481,12 @@ class AdminMonitoringTest extends TestCase
             'agent_phone_no' => $employee->phone,
             'created_by' => $employee->id,
             'agent_id' => $employee->id,
+            'created_by_role' => 'employee',
             'status' => 'pending',
+            'workflow_status' => 'pending_approval',
+            'current_step' => 1,
+            'is_step_incomplete' => true,
+            'completed_steps' => [],
         ]);
 
         $pendingStepResponse = $this->actingAs($employee)->get(route('admin.enrollment.step2', $enrollment));
@@ -490,12 +495,25 @@ class AdminMonitoringTest extends TestCase
 
         $this->actingAs($superAdmin)->post(route('admin.enrollment.approve', $enrollment->id), [
             'approval_remarks' => 'Approved for testing.',
-        ])->assertRedirect(route('admin.enrollment.pending'));
+        ])->assertRedirect(route('admin.enrollment.details', $enrollment->id));
 
         $approvedStepResponse = $this->actingAs($employee)->get(route('admin.enrollment.step2', $enrollment));
         $approvedStepResponse->assertOk();
         $approvedStepResponse->assertSee('Step 2 of doctor enrollment');
         $approvedStepResponse->assertSee('Continue to Step 3');
+
+        $enrollment->refresh();
+        $this->assertSame(2, (int) $enrollment->current_step);
+
+        $continueResponse = $this->actingAs($employee)->post(route('admin.enrollment.step2.continue', $enrollment));
+        $continueResponse->assertRedirect(route('admin.enrollment.step3', $enrollment));
+
+        $enrollment->refresh();
+        $this->assertSame(3, (int) $enrollment->current_step);
+
+        $stepThreeResponse = $this->actingAs($employee)->get(route('admin.enrollment.step3', $enrollment));
+        $stepThreeResponse->assertOk();
+        $stepThreeResponse->assertSee('Step 3', false);
     }
 
     public function test_pending_actions_render_strictly_by_role_flags(): void

@@ -4,6 +4,10 @@
 @section('page-title', 'Membership Intelligence')
 
 @section('content')
+@if(!empty($isEmployeeDashboard))
+    @include('admin.dashboard-employee')
+@endif
+
 @php
     $change = $payments['previous_year'] > 0
         ? (($payments['this_year'] - $payments['previous_year']) / $payments['previous_year']) * 100
@@ -50,29 +54,38 @@
             <thead>
                 <tr class="border-b border-red-200">
                     <th class="px-4 py-2 text-left font-semibold text-red-900">Doctor</th>
-                    <th class="px-4 py-2 text-left font-semibold text-red-900">Customer ID</th>
-                    <th class="px-4 py-2 text-left font-semibold text-red-900">Status</th>
+                    <th class="px-4 py-2 text-left font-semibold text-red-900">Created by</th>
                     <th class="px-4 py-2 text-left font-semibold text-red-900">Step</th>
-                    <th class="px-4 py-2 text-left font-semibold text-red-900">Last Activity</th>
+                    <th class="px-4 py-2 text-left font-semibold text-red-900">Approval</th>
+                    <th class="px-4 py-2 text-left font-semibold text-red-900">Last updated</th>
                     <th class="px-4 py-2 text-center font-semibold text-red-900">Action</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($incompleteEnrollments as $enrollment)
                     <tr class="border-b border-red-100">
-                        <td class="px-4 py-3 font-medium text-slate-800">{{ $enrollment->doctor_name ?? 'N/A' }}</td>
-                        <td class="px-4 py-3 text-slate-600">{{ $enrollment->customer_id_no ?? 'N/A' }}</td>
                         <td class="px-4 py-3">
-                            <span class="inline-block rounded-full px-3 py-1 text-xs font-semibold {{ $enrollment->workflow_status === 'draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-orange-100 text-orange-800' }}">
-                                {{ ucfirst(str_replace('_', ' ', $enrollment->workflow_status ?? 'unknown')) }}
+                            <p class="font-medium text-slate-800">{{ $enrollment->doctor_name ?? 'N/A' }}</p>
+                            <p class="text-xs text-slate-500">{{ $enrollment->customer_id_no ?? 'N/A' }}</p>
+                        </td>
+                        <td class="px-4 py-3 text-slate-600">
+                            <p class="font-medium">{{ $enrollment->creator?->name ?? '—' }}</p>
+                            <p class="text-xs">{{ $enrollment->created_by_role ?? '' }}</p>
+                        </td>
+                        <td class="px-4 py-3 font-medium text-slate-800">Step {{ (int) ($enrollment->current_step ?? 1) }}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {{ \App\Support\EnrollmentWorkflow::dashboardBadgeClasses($enrollment) }}">
+                                {{ \App\Support\EnrollmentWorkflow::dashboardStatusLabel($enrollment) }}
                             </span>
                         </td>
-                        <td class="px-4 py-3 font-medium text-slate-800">Step {{ $enrollment->current_step ?? 1 }}</td>
-                        <td class="px-4 py-3 text-slate-600">{{ optional($enrollment->last_activity_at)->diffForHumans() ?? 'N/A' }}</td>
+                        <td class="px-4 py-3 text-slate-600">{{ optional($enrollment->last_activity_at ?? $enrollment->updated_at)->diffForHumans() ?? 'N/A' }}</td>
                         <td class="px-4 py-3 text-center">
-                            <a href="{{ route('admin.enrollment.resume', $enrollment) }}" class="inline-flex items-center gap-1 rounded-lg bg-red-100 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-200">
-                                <i class="ri-play-line"></i> Resume
-                            </a>
+                            <a href="{{ route('admin.enrollment.details', $enrollment) }}" class="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">View</a>
+                            @if(\App\Support\EnrollmentWorkflow::canResumeFromDashboard($enrollment))
+                                <a href="{{ route('admin.enrollment.resume', $enrollment) }}" class="ml-1 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">
+                                    <i class="ri-play-line"></i> {{ \App\Support\EnrollmentWorkflow::dashboardResumeLabel($enrollment) }}
+                                </a>
+                            @endif
                         </td>
                     </tr>
                 @empty
@@ -98,10 +111,11 @@
         @foreach([
             ['k' => 'new_enrollments', 'label' => 'New enrollments', 'href' => 'new_entries'],
             ['k' => 'pending_approvals', 'label' => 'Pending approvals', 'href' => 'pending_approvals'],
-            ['k' => 'incomplete_drafts', 'label' => 'Incomplete drafts', 'href' => 'incomplete'],
+            ['k' => 'incomplete_drafts', 'label' => 'In progress', 'href' => 'incomplete'],
             ['k' => 'completed_enrollments', 'label' => 'Completed', 'href' => 'completed'],
             ['k' => 'rejected_cases', 'label' => 'Rejected cases', 'href' => 'rejected'],
             ['k' => 'returned_for_correction', 'label' => 'Returned', 'href' => 'returned'],
+            ['k' => 'on_hold', 'label' => 'On hold', 'href' => 'hold'],
         ] as $row)
             <a href="{{ route('admin.enrollment.monitoring', ['bucket' => $row['href']]) }}" class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 transition hover:border-blue-200 hover:bg-white">
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ $row['label'] }}</p>
@@ -131,11 +145,14 @@
     <section class="section-card border-l-4 border-rose-500">
         <h3 class="section-title">Workflow Monitor</h3>
         <div class="space-y-3">
-            <div class="metric-row"><span>Draft workflows</span><strong class="text-rose-700">{{ number_format($workflowSummary['draft']) }}</strong></div>
-            <div class="metric-row"><span>In progress</span><strong class="text-amber-700">{{ number_format($workflowSummary['in_progress']) }}</strong></div>
-            <div class="metric-row"><span>Pending approval</span><strong class="text-blue-700">{{ number_format($workflowSummary['pending_approval']) }}</strong></div>
-            <div class="metric-row"><span>Completed</span><strong class="text-emerald-700">{{ number_format($workflowSummary['completed']) }}</strong></div>
-            <div class="metric-row"><span>Incomplete enrollments</span><strong class="text-rose-700">{{ number_format($workflowSummary['incomplete']) }}</strong></div>
+            <div class="metric-row"><span>Draft</span><strong class="text-slate-700">{{ number_format($workflowSummary['draft'] ?? 0) }}</strong></div>
+            <div class="metric-row"><span>Pending approval</span><strong class="text-amber-700">{{ number_format($workflowSummary['pending_approval'] ?? 0) }}</strong></div>
+            <div class="metric-row"><span>In progress</span><strong class="text-sky-700">{{ number_format($workflowSummary['in_progress'] ?? 0) }}</strong></div>
+            <div class="metric-row"><span>Approved (onboarding)</span><strong class="text-green-700">{{ number_format($workflowSummary['approved'] ?? 0) }}</strong></div>
+            <div class="metric-row"><span>Rejected</span><strong class="text-rose-700">{{ number_format($workflowSummary['rejected'] ?? 0) }}</strong></div>
+            <div class="metric-row"><span>On hold</span><strong class="text-orange-700">{{ number_format($workflowSummary['on_hold'] ?? 0) }}</strong></div>
+            <div class="metric-row"><span>Completed</span><strong class="text-emerald-700">{{ number_format($workflowSummary['completed'] ?? 0) }}</strong></div>
+            <div class="metric-row"><span>Incomplete pipeline</span><strong class="text-rose-700">{{ number_format($workflowSummary['incomplete'] ?? 0) }}</strong></div>
         </div>
     </section>
 
@@ -149,8 +166,10 @@
                 <thead>
                     <tr>
                         <th>Doctor</th>
+                        <th>Created by</th>
                         <th>Step</th>
-                        <th>Last Activity</th>
+                        <th>Approval</th>
+                        <th>Last updated</th>
                         <th class="text-right">Action</th>
                     </tr>
                 </thead>
@@ -166,19 +185,33 @@
                                     </div>
                                 </div>
                             </td>
+                            <td class="text-sm text-slate-700">
+                                <p class="font-medium">{{ $enrollment->creator?->name ?? '—' }}</p>
+                                <p class="text-xs text-slate-500">{{ $enrollment->created_by_role ?? '' }}</p>
+                            </td>
                             <td>
                                 <span class="inline-flex rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">
-                                    Step {{ (int) ($enrollment->current_step ?: 1) }} · {{ ucfirst(str_replace('_', ' ', $enrollment->workflow_status ?: 'draft')) }}
+                                    Step {{ (int) ($enrollment->current_step ?: 1) }}
                                 </span>
                             </td>
-                            <td class="text-sm text-slate-600">{{ optional($enrollment->last_activity_at ?? $enrollment->created_at)->format('d/m/Y H:i') }}</td>
-                            <td class="text-right">
-                                <a href="{{ route('admin.enrollment.resume', $enrollment) }}" class="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-500">Resume</a>
+                            <td>
+                                <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {{ \App\Support\EnrollmentWorkflow::dashboardBadgeClasses($enrollment) }}">
+                                    {{ \App\Support\EnrollmentWorkflow::dashboardStatusLabel($enrollment) }}
+                                </span>
+                            </td>
+                            <td class="text-sm text-slate-600">{{ optional($enrollment->last_activity_at ?? $enrollment->updated_at)->format('d/m/Y H:i') }}</td>
+                            <td class="text-right whitespace-nowrap">
+                                <a href="{{ route('admin.enrollment.details', $enrollment) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">View</a>
+                                @if(\App\Support\EnrollmentWorkflow::canResumeFromDashboard($enrollment))
+                                    <a href="{{ route('admin.enrollment.resume', $enrollment) }}" class="ml-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">
+                                        {{ \App\Support\EnrollmentWorkflow::dashboardResumeLabel($enrollment) }}
+                                    </a>
+                                @endif
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="4" class="py-6 text-center text-slate-500">No incomplete workflow records found.</td>
+                            <td colspan="6" class="py-6 text-center text-slate-500">No incomplete workflow records found.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -250,6 +283,46 @@
         </article>
     </section>
 </div>
+
+@if(!empty($latest_pipeline_doctors) && $latest_pipeline_doctors->isNotEmpty())
+<section class="section-card mb-6">
+    <div class="mb-4 flex items-center justify-between">
+        <h3 class="section-title mb-0">Latest Pipeline Activity</h3>
+        <a href="{{ route('admin.enrollment.monitoring') }}" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Workflow monitor</a>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Doctor</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th class="text-right">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($latest_pipeline_doctors as $row)
+                    <tr>
+                        <td>
+                            <p class="font-semibold text-slate-800">{{ $row->doctor_name !== 'Draft enrollment' ? $row->doctor_name : 'Unnamed draft' }}</p>
+                            <p class="text-xs text-slate-500">{{ $row->customer_id_no }}</p>
+                        </td>
+                        <td>
+                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {{ \App\Support\EnrollmentWorkflow::dashboardBadgeClasses($row) }}">
+                                {{ \App\Support\EnrollmentWorkflow::dashboardStatusLabel($row) }}
+                            </span>
+                        </td>
+                        <td class="text-sm text-slate-600">{{ optional($row->submitted_at ?? $row->created_at)->format('d/m/Y H:i') }}</td>
+                        <td class="text-right">
+                            <a href="{{ route('admin.enrollment.details', $row) }}" class="text-xs font-semibold text-blue-600 hover:underline">Details</a>
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</section>
+@endif
 
 <section class="section-card">
     <div class="mb-4 flex items-center justify-between">

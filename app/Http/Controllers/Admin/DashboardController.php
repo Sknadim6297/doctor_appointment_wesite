@@ -8,8 +8,11 @@ use App\Models\Enrollment;
 use App\Models\LegalCase;
 use App\Models\PolicyReceipt;
 use App\Http\Controllers\Controller;
+use App\Services\DashboardCacheService;
+use App\Services\EnrollmentRecordAccessService;
 use App\Support\EnrollmentWorkflow;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 
@@ -20,28 +23,30 @@ class DashboardController extends Controller
      */
     private const DASHBOARD_CACHE_TTL = 3600;
 
+    public function __construct(
+        private readonly EnrollmentRecordAccessService $recordAccess,
+    ) {
+    }
+
     public function index()
     {
-        // Cache key that invalidates if any relevant table is modified
-        $cacheKey = 'dashboard_stats_' . date('YmdH'); // Hourly cache
+        $user = Auth::user();
+        $cacheKey = DashboardCacheService::cacheKeyForUser($user?->id);
+        $isEmployeeDashboard = $this->recordAccess->isEmployeeLike($user);
 
-        // Try to get from cache first
-        $cachedData = Cache::get($cacheKey);
-        if ($cachedData) {
-            return view('admin.dashboard', $cachedData);
+        $cachedHeavy = Cache::get($cacheKey);
+        if (is_array($cachedHeavy) && isset($cachedHeavy['stats'])) {
+            return view('admin.dashboard', array_merge(
+                $cachedHeavy,
+                $this->buildLivePipelineStats($user, $isEmployeeDashboard)
+            ));
         }
 
         $now = Carbon::now();
         $currentYear = (int) $now->year;
         $previousYear = $currentYear - 1;
         $sixMonthsAgo = $now->copy()->subMonths(6)->startOfDay();
-        $yearStart = $now->copy()->startOfYear()->toDateTimeString();
 
-        // ============================================
-        // AGGREGATION QUERIES - Optimized with raw counting
-        // ============================================
-        
-        // Single aggregated query for main stats to reduce database round trips
         $productionDoctors = Enrollment::query()->productionReady();
 
         $mainStats = (clone $productionDoctors)
@@ -53,10 +58,10 @@ class DashboardController extends Controller
             ', [$now->toDateTimeString(), $now->toDateTimeString(), $sixMonthsAgo->toDateTimeString()])
             ->first();
 
-        $doctorCount = (int) $mainStats->total_doctors;
-        $moneyReceiptCount = (int) $mainStats->money_receipt_count;
-        $lapseCount = (int) $mainStats->lapse_count;
-        $lastSixMonthsLapse = (int) $mainStats->last_six_months_lapse;
+        $doctorCount = (int) ($mainStats->total_doctors ?? 0);
+        $moneyReceiptCount = (int) ($mainStats->money_receipt_count ?? 0);
+        $lapseCount = (int) ($mainStats->lapse_count ?? 0);
+        $lastSixMonthsLapse = (int) ($mainStats->last_six_months_lapse ?? 0);
 
         $doctorCaseCount = (int) LegalCase::query()->count();
         $doctorPostCount = (int) DoctorPost::query()->count();
@@ -70,9 +75,6 @@ class DashboardController extends Controller
             'doctor_posts' => $doctorPostCount,
         ];
 
-        // ============================================
-        // PROGRESS TRACKING - Combined with distinct counts
-        // ============================================
         $progressStats = DB::table('enrollments as e')
             ->selectRaw('
                 (SELECT COUNT(DISTINCT enrollment_id) FROM doctor_documents WHERE enrollment_id IS NOT NULL) as with_documents,
@@ -83,7 +85,6 @@ class DashboardController extends Controller
             ')
             ->first();
 
-        // Handle null case when database is empty
         $progressStats = $progressStats ?? (object) [
             'with_documents' => 0,
             'with_cases' => 0,
@@ -98,9 +99,6 @@ class DashboardController extends Controller
             'renew_expired' => ['count' => $lapseCount, 'total' => $doctorCount],
         ];
 
-        // ============================================
-        // PLAN DISTRIBUTION - Combined query
-        // ============================================
         $planStats = (clone $productionDoctors)
             ->selectRaw('
                 SUM(CASE WHEN plan = 1 THEN 1 ELSE 0 END) as normal_count,
@@ -109,7 +107,6 @@ class DashboardController extends Controller
             ')
             ->first();
 
-        // Handle null case when database is empty
         $planStats = $planStats ?? (object) [
             'normal_count' => 0,
             'high_count' => 0,
@@ -122,9 +119,6 @@ class DashboardController extends Controller
             'combo' => (int) $planStats->combo_count,
         ];
 
-        // ============================================
-        // RECENT ACTIVITY - Combined query
-        // ============================================
         $recentStats = (clone $productionDoctors)
             ->selectRaw('
                 COUNT(CASE WHEN created_at >= ? THEN 1 END) as last_six_months_enrollment,
@@ -132,9 +126,8 @@ class DashboardController extends Controller
             ', [$sixMonthsAgo->toDateTimeString()])
             ->first();
 
-        $lastSixMonthsEnrollment = (int) $recentStats->last_six_months_enrollment;
+        $lastSixMonthsEnrollment = (int) ($recentStats->last_six_months_enrollment ?? 0);
 
-        // Last six months renew from policy_receipts
         $lastSixMonthsRenew = (int) PolicyReceipt::query()
             ->where(function ($query) use ($sixMonthsAgo) {
                 $query->where('receive_date', '>=', $sixMonthsAgo)
@@ -145,9 +138,6 @@ class DashboardController extends Controller
             })
             ->count();
 
-        // ============================================
-        // YEAR COMPARISON - Combined query
-        // ============================================
         $yearStats = (clone $productionDoctors)
             ->selectRaw('
                 SUM(CASE WHEN YEAR(created_at) = ? THEN 1 ELSE 0 END) as current_enrollment,
@@ -162,7 +152,6 @@ class DashboardController extends Controller
             ', [$currentYear, $previousYear, $currentYear, $previousYear])
             ->first();
 
-        // Year comparison for renewals
         $renewalYearStats = DB::table('policy_receipts')
             ->selectRaw('
                 SUM(CASE WHEN YEAR(COALESCE(receive_date, created_at)) = ? THEN 1 ELSE 0 END) as current_renew,
@@ -171,85 +160,129 @@ class DashboardController extends Controller
             ->first();
 
         $yearComparison = [
-            'previous_enrollment' => (int) $yearStats->previous_enrollment,
-            'current_enrollment' => (int) $yearStats->current_enrollment,
-            'previous_renew' => (int) $renewalYearStats->previous_renew,
-            'current_renew' => (int) $renewalYearStats->current_renew,
+            'previous_enrollment' => (int) ($yearStats->previous_enrollment ?? 0),
+            'current_enrollment' => (int) ($yearStats->current_enrollment ?? 0),
+            'previous_renew' => (int) ($renewalYearStats->previous_renew ?? 0),
+            'current_renew' => (int) ($renewalYearStats->current_renew ?? 0),
         ];
 
         $payments = [
-            'this_year' => (float) $yearStats->this_year_payments,
-            'previous_year' => (float) $yearStats->previous_year_payments,
-            'all_time' => (float) $yearStats->all_time_payments,
+            'this_year' => (float) ($yearStats->this_year_payments ?? 0),
+            'previous_year' => (float) ($yearStats->previous_year_payments ?? 0),
+            'all_time' => (float) ($yearStats->all_time_payments ?? 0),
         ];
 
-        // ============================================
-        // LATEST ENROLLMENTS - Optimize with select
-        // ============================================
         $latest_doctors = Enrollment::query()
             ->productionReady()
             ->select('id', 'doctor_name', 'created_at')
             ->whereNotNull('doctor_name')
+            ->where('doctor_name', '!=', 'Draft enrollment')
             ->orderByDesc('created_at')
             ->limit(6)
             ->get();
 
-        $crmCounters = [
-            'new_enrollments' => Enrollment::query()->tap(fn ($q) => EnrollmentWorkflow::scopeNewEntries($q))->count(),
-            'pending_approvals' => Enrollment::query()->tap(fn ($q) => EnrollmentWorkflow::scopePendingAdminGate($q))->count(),
-            'incomplete_drafts' => Enrollment::query()->tap(fn ($q) => EnrollmentWorkflow::scopeIncompletePipeline($q))->count(),
-            'completed_enrollments' => Enrollment::query()->productionReady()->count(),
-            'rejected_cases' => Enrollment::query()->tap(fn ($q) => EnrollmentWorkflow::scopeRejectedCases($q))->count(),
-            'returned_for_correction' => Enrollment::query()->tap(fn ($q) => EnrollmentWorkflow::scopeReturnedForCorrection($q))->count(),
-        ];
+        $livePipeline = $this->buildLivePipelineStats($user, $isEmployeeDashboard);
 
-        $workflowStats = DB::table('enrollments')
-            ->selectRaw('
-                SUM(CASE WHEN workflow_status = "draft" THEN 1 ELSE 0 END) as draft_count,
-                SUM(CASE WHEN workflow_status = "in_progress" THEN 1 ELSE 0 END) as in_progress_count,
-                SUM(CASE WHEN workflow_status IN ("pending_approval", "pending_review") THEN 1 ELSE 0 END) as pending_approval_count,
-                SUM(CASE WHEN workflow_status = "completed" THEN 1 ELSE 0 END) as completed_count,
-                SUM(CASE WHEN is_step_incomplete = 1 THEN 1 ELSE 0 END) as incomplete_count
-            ')
-            ->first();
-
-        $incompleteEnrollments = Enrollment::query()
-            ->select('id', 'doctor_name', 'customer_id_no', 'workflow_status', 'current_step', 'is_step_incomplete', 'last_activity_at', 'created_at')
-            ->where('is_step_incomplete', true)
-            ->orderByDesc('last_activity_at')
-            ->limit(6)
-            ->get();
-
-        $workflowSummary = [
-            'draft' => (int) $workflowStats->draft_count,
-            'in_progress' => (int) $workflowStats->in_progress_count,
-            'pending_approval' => (int) $workflowStats->pending_approval_count,
-            'completed' => (int) $workflowStats->completed_count,
-            'incomplete' => (int) $workflowStats->incomplete_count,
-        ];
-
-        // ============================================
-        // PREPARE CACHE DATA
-        // ============================================
-        $viewData = compact(
+        $viewData = array_merge(compact(
             'stats',
             'progress',
             'plans',
             'payments',
             'latest_doctors',
-            'workflowSummary',
-            'crmCounters',
-            'incompleteEnrollments',
             'lastSixMonthsEnrollment',
             'lastSixMonthsRenew',
             'lastSixMonthsLapse',
-            'yearComparison'
-        );
+            'yearComparison',
+            'isEmployeeDashboard',
+        ), $livePipeline);
 
-        // Cache the computed data for 1 hour
-        Cache::put($cacheKey, $viewData, self::DASHBOARD_CACHE_TTL);
+        Cache::put($cacheKey, array_diff_key($viewData, array_flip([
+            'workflowSummary',
+            'crmCounters',
+            'incompleteEnrollments',
+            'latest_pipeline_doctors',
+            'employeeDashboardStats',
+            'employeeRecentEnrollments',
+        ])), self::DASHBOARD_CACHE_TTL);
 
         return view('admin.dashboard', $viewData);
     }
-}
 
+    /**
+     * Live CRM / workflow stats (never long-cached).
+     *
+     * @return array<string, mixed>
+     */
+    private function buildLivePipelineStats($user, bool $isEmployeeDashboard): array
+    {
+        $pipelineBase = $this->recordAccess->applyOwnedScope(Enrollment::query(), $user);
+
+        $crmCounters = [
+            'new_enrollments' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeNewEntries($q))->count(),
+            'pending_approvals' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopePendingAdminGate($q))->count(),
+            'incomplete_drafts' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeIncompletePipeline($q))->count(),
+            'completed_enrollments' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeCompletedPipeline($q))->count(),
+            'rejected_cases' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeRejectedCases($q))->count(),
+            'returned_for_correction' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeReturnedForCorrection($q))->count(),
+            'on_hold' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeOnHold($q))->count(),
+        ];
+
+        $workflowSummary = [
+            'draft' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeDraftOnly($q))->count(),
+            'in_progress' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeOnboardingInProgress($q))->count(),
+            'pending_approval' => $crmCounters['pending_approvals'],
+            'approved' => (clone $pipelineBase)->tap(fn ($q) => EnrollmentWorkflow::scopeApprovedNotCompleted($q))->count(),
+            'rejected' => $crmCounters['rejected_cases'],
+            'returned' => $crmCounters['returned_for_correction'],
+            'on_hold' => $crmCounters['on_hold'],
+            'completed' => $crmCounters['completed_enrollments'],
+            'incomplete' => $crmCounters['incomplete_drafts'],
+        ];
+
+        $incompleteEnrollments = (clone $pipelineBase)
+            ->with(['creator', 'approver'])
+            ->tap(fn ($q) => EnrollmentWorkflow::scopeIncompletePipeline($q))
+            ->orderByDesc('last_activity_at')
+            ->orderByDesc('updated_at')
+            ->limit(12)
+            ->get();
+
+        $latest_pipeline_doctors = (clone $pipelineBase)
+            ->with(['creator'])
+            ->where('doctor_name', '!=', 'Draft enrollment')
+            ->whereNotNull('doctor_name')
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('last_activity_at')
+            ->orderByDesc('created_at')
+            ->limit(6)
+            ->get(['id', 'doctor_name', 'customer_id_no', 'status', 'workflow_status', 'submitted_at', 'created_at', 'created_by']);
+
+        $employeeDashboardStats = null;
+        $employeeRecentEnrollments = null;
+
+        if ($isEmployeeDashboard) {
+            $ownedBase = $this->recordAccess->applyOwnedScope(Enrollment::query(), $user);
+            $employeeDashboardStats = [
+                'draft' => (clone $ownedBase)->tap(fn ($q) => EnrollmentWorkflow::scopeDraftOnly($q))->count(),
+                'pending' => (clone $ownedBase)->tap(fn ($q) => EnrollmentWorkflow::scopePendingAdminGate($q))->count(),
+                'approved' => (clone $ownedBase)->where('status', 'approved')->count(),
+                'rejected' => (clone $ownedBase)->tap(fn ($q) => EnrollmentWorkflow::scopeRejectedCases($q))->count(),
+                'incomplete' => (clone $ownedBase)->tap(fn ($q) => EnrollmentWorkflow::scopeIncompletePipeline($q))->count(),
+            ];
+            $employeeRecentEnrollments = (clone $ownedBase)
+                ->orderByDesc('last_activity_at')
+                ->orderByDesc('updated_at')
+                ->limit(8)
+                ->get(['id', 'doctor_name', 'customer_id_no', 'status', 'workflow_status', 'current_step', 'rejection_reason', 'last_activity_at', 'submitted_at']);
+        }
+
+        return compact(
+            'workflowSummary',
+            'crmCounters',
+            'incompleteEnrollments',
+            'latest_pipeline_doctors',
+            'employeeDashboardStats',
+            'employeeRecentEnrollments'
+        );
+    }
+}

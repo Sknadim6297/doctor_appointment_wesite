@@ -18,6 +18,75 @@ final class DoctorDocumentCatalog
     public const SOURCE_ENROLLMENT_STEP1 = 'enrollment_step1';
     public const SOURCE_ENROLLMENT_STEP3 = 'enrollment_step3';
     public const SOURCE_ENROLLMENT_STEP4 = 'enrollment_step4';
+    public const SOURCE_DOCTOR_PORTAL = 'doctor_portal';
+    public const SOURCE_USER_PORTAL = 'user_portal';
+
+    /** @return list<string> */
+    public static function externalVerificationSources(): array
+    {
+        return [
+            self::SOURCE_DOCTOR_PORTAL,
+            self::SOURCE_USER_PORTAL,
+        ];
+    }
+
+    /** @return list<string> */
+    public static function adminManagedSources(): array
+    {
+        return [
+            self::SOURCE_MANUAL,
+            self::SOURCE_ENROLLMENT_STEP1,
+            self::SOURCE_ENROLLMENT_STEP3,
+            self::SOURCE_ENROLLMENT_STEP4,
+        ];
+    }
+
+    /** @return array<string, array{category: string, title: string, type: string}> */
+    /** @return list<string> */
+    public static function requiredEnrollmentDocumentTypes(): array
+    {
+        return ['aadhaar', 'pan', 'medical_registration'];
+    }
+
+    /**
+     * Upload slots shown on enrollment create form (grouped for details view).
+     *
+     * @return list<array{section: string, field: string, title: string, category: string, type: string, required: bool, multiple: bool}>
+     */
+    public static function enrollmentUploadSlots(): array
+    {
+        $requiredTypes = self::requiredEnrollmentDocumentTypes();
+        $sections = [
+            'Form Upload (Optional)' => ['doc_insurance_form', 'doc_enrollment_form', 'doc_other_forms'],
+            'Identity & Professional Documents (Required)' => ['doc_aadhaar_card', 'doc_pan_card', 'doc_medical_registration'],
+            'Supporting Documents (Optional)' => ['doc_other_documents'],
+            'Payment Documents (Optional)' => ['doc_payment_document'],
+        ];
+
+        $map = self::enrollmentFieldMap();
+        $slots = [];
+
+        foreach ($sections as $section => $fields) {
+            foreach ($fields as $field) {
+                $meta = $map[$field] ?? null;
+                if (!$meta) {
+                    continue;
+                }
+
+                $slots[] = [
+                    'section' => $section,
+                    'field' => $field,
+                    'title' => $meta['title'],
+                    'category' => $meta['category'],
+                    'type' => $meta['type'],
+                    'required' => in_array($meta['type'], $requiredTypes, true),
+                    'multiple' => in_array($field, ['doc_other_forms', 'doc_other_documents'], true),
+                ];
+            }
+        }
+
+        return $slots;
+    }
 
     /** @return array<string, array{category: string, title: string, type: string}> */
     public static function enrollmentFieldMap(): array
@@ -51,7 +120,7 @@ final class DoctorDocumentCatalog
             'doc_other_forms' => [
                 'category' => self::CATEGORY_ENROLLMENT_FORM,
                 'type' => 'other_form',
-                'title' => 'Enrollment Form (Other)',
+                'title' => 'Supporting Document',
             ],
             'doc_payment_document' => [
                 'category' => self::CATEGORY_PAYMENT,
@@ -61,7 +130,7 @@ final class DoctorDocumentCatalog
             'doc_other_documents' => [
                 'category' => self::CATEGORY_ADDITIONAL,
                 'type' => 'additional',
-                'title' => 'Additional Document',
+                'title' => 'Supporting Document',
             ],
         ];
     }
@@ -112,12 +181,62 @@ final class DoctorDocumentCatalog
     public static function legacyTypeLabel(string $type): string
     {
         return match ($type) {
-            '2' => 'Policy',
-            '4' => 'Cheque',
-            '6' => 'Form',
-            '7' => 'Consignment Form',
-            '8' => 'Other Documents',
+            '2' => 'Policy Certificate',
+            '4' => 'Payment Proof',
+            '6' => 'Membership Certificate',
+            '7' => 'Consignment Note',
+            '8' => 'Additional Attachment',
             default => 'Document',
         };
+    }
+
+    public static function isExternalSource(?string $source): bool
+    {
+        return in_array($source, self::externalVerificationSources(), true);
+    }
+
+    public static function indexedTitle(string $baseTitle, int $index): string
+    {
+        return $index > 1 ? $baseTitle . ' ' . $index : $baseTitle;
+    }
+
+    public static function humanizeTitle(string $title, string $documentType = '', ?string $sourceKey = null): string
+    {
+        if (preg_match('/^Enrollment Form \(Other\) #(\d+)$/i', $title, $matches)) {
+            return self::indexedTitle('Supporting Document', (int) $matches[1]);
+        }
+
+        if (preg_match('/^Additional Document #(\d+)$/i', $title, $matches)) {
+            return self::indexedTitle('Additional Attachment', (int) $matches[1]);
+        }
+
+        if (preg_match('/^(Supporting Document|Additional Attachment) #(\d+)$/i', $title, $matches)) {
+            return self::indexedTitle($matches[1], (int) $matches[2]);
+        }
+
+        $fromType = match ($documentType) {
+            'other_form' => 'Supporting Document',
+            'additional' => 'Additional Attachment',
+            'policy' => 'Policy Certificate',
+            'consignment' => 'Consignment Note',
+            'post_document' => 'Processing Note',
+            'payment_proof' => 'Payment Proof',
+            'insurance_form' => 'Insurance Form',
+            'enrollment_form' => 'Enrollment Form',
+            'aadhaar' => 'Aadhaar Card',
+            'pan' => 'PAN Card',
+            'medical_registration' => 'Medical Registration Certificate',
+            default => null,
+        };
+
+        if ($fromType !== null && ($title === '' || str_contains($title, '#') || str_contains($title, '('))) {
+            if (preg_match('/#(\d+)$/', $title, $matches)) {
+                return self::indexedTitle($fromType, (int) $matches[1]);
+            }
+
+            return $fromType;
+        }
+
+        return $title !== '' ? $title : ($fromType ?? 'Document');
     }
 }

@@ -28,10 +28,13 @@
                     <i class="ri-download-2-line"></i>
                     <span>Download PDF</span>
                 </a>
-                <a href="{{ route('admin.enrollment.step3', $enrollment) }}" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
-                    <span>Continue</span>
-                    <i class="ri-arrow-right-line"></i>
-                </a>
+                <form method="POST" action="{{ route('admin.enrollment.step2.continue', $enrollment) }}" class="inline">
+                    @csrf
+                    <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
+                        <span>Continue</span>
+                        <i class="ri-arrow-right-line"></i>
+                    </button>
+                </form>
             </div>
         </div>
     </div>
@@ -99,10 +102,13 @@
                     </div>
                 </div>
 
-                <a href="{{ route('admin.enrollment.step3', $enrollment) }}" class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-500">
-                    <span>Continue to Step 3</span>
-                    <i class="ri-arrow-right-line"></i>
-                </a>
+                <form method="POST" action="{{ route('admin.enrollment.step2.continue', $enrollment) }}" class="mt-5">
+                    @csrf
+                    <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-500">
+                        <span>Continue to Step 3</span>
+                        <i class="ri-arrow-right-line"></i>
+                    </button>
+                </form>
             </div>
         </div>
     </div>
@@ -115,7 +121,7 @@
         .btn,
         .nav-link,
         button,
-        a[href*='step-3'] {
+        form[action*='step-2/continue'] {
             display: none !important;
         }
 

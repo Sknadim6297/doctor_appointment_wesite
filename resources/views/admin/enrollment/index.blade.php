@@ -1,7 +1,7 @@
 @extends('admin.layouts.app')
 
-@section('title', 'Doctor List')
-@section('page-title', 'Doctor List')
+@section('title', 'Enrollment CRM')
+@section('page-title', 'Enrollment CRM')
 
 @section('content')
 <style>

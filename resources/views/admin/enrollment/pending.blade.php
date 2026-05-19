@@ -4,305 +4,221 @@
 @section('page-title', 'Pending Enrollment Approvals')
 
 @section('content')
-<!-- Header Section -->
-<div class="mb-6 flex items-center justify-between">
-    <div>
-        <div class="mb-2 flex flex-wrap items-center gap-2">
-            <a href="{{ route('admin.enrollment') }}" class="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900">
-                <i class="ri-arrow-left-line text-lg"></i>
-                Back to Enrollments
+@php
+    $documentReadiness = $documentReadiness ?? [];
+@endphp
+
+@if(session('success'))
+    <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">{{ session('success') }}</div>
+@endif
+@if(session('error'))
+    <div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900">{{ session('error') }}</div>
+@endif
+
+<!-- Hero -->
+<div class="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-amber-50 via-white to-blue-50 shadow-sm">
+    <div class="p-6 md:p-8">
+        <div class="mb-4 flex flex-wrap items-center gap-2 text-sm">
+            <a href="{{ route('admin.enrollment') }}" class="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900">
+                <i class="ri-arrow-left-line"></i> Back to Enrollments
             </a>
             <span class="text-slate-300">|</span>
-            <a href="{{ route('admin.enrollment.monitoring') }}" class="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
-                <i class="ri-pulse-line"></i>
-                Enrollment CRM
+            <a href="{{ route('admin.enrollment.monitoring') }}" class="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800">
+                <i class="ri-pulse-line"></i> Enrollment CRM
             </a>
         </div>
-        <h1 class="text-3xl font-bold text-slate-900">Pending Approvals</h1>
-        <p class="mt-1 text-slate-600">Review and approve pending enrollment applications</p>
-    </div>
-    <div class="flex flex-col items-end gap-1">
-        <div class="text-4xl font-bold text-blue-600">{{ $enrollments->total() }}</div>
-        <div class="text-sm text-slate-600">Pending to Review</div>
+
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div class="max-w-2xl">
+                <h1 class="text-3xl font-bold tracking-tight text-slate-900">Pending Approvals</h1>
+                <p class="mt-2 text-slate-600">Employee-submitted enrollments waiting for your decision. Open the full application, verify documents, then approve or reject.</p>
+            </div>
+            <div class="flex shrink-0 flex-col items-center rounded-2xl border border-amber-200 bg-white px-8 py-5 shadow-sm">
+                <span class="text-4xl font-bold text-amber-600">{{ $enrollments->total() }}</span>
+                <span class="text-sm font-medium text-slate-600">awaiting review</span>
+            </div>
+        </div>
+
+        <!-- Workflow explainer -->
+        <div class="mt-6 grid gap-4 md:grid-cols-4">
+            <div class="rounded-xl border border-slate-200 bg-white/80 p-4">
+                <p class="text-xs font-bold uppercase text-slate-500">Step 1</p>
+                <p class="mt-1 text-sm font-semibold text-slate-900">Employee submits</p>
+                <p class="mt-1 text-xs text-slate-500">Form + required documents</p>
+            </div>
+            <div class="rounded-xl border-2 border-amber-400 bg-amber-50 p-4">
+                <p class="text-xs font-bold uppercase text-amber-800">You are here</p>
+                <p class="mt-1 text-sm font-semibold text-amber-950">Admin approves</p>
+                <p class="mt-1 text-xs text-amber-800">Review full dossier & decide</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white/80 p-4">
+                <p class="text-xs font-bold uppercase text-slate-500">Step 2–4</p>
+                <p class="mt-1 text-sm font-semibold text-slate-900">Employee continues</p>
+                <p class="mt-1 text-xs text-slate-500">Preview, policy, post (after approval)</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white/80 p-4">
+                <p class="text-xs font-bold uppercase text-slate-500">Complete</p>
+                <p class="mt-1 text-sm font-semibold text-slate-900">Active doctor</p>
+                <p class="mt-1 text-xs text-slate-500">Doctor List when finished</p>
+            </div>
+        </div>
+
+        <div class="mt-4 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-950">
+            <p class="font-semibold">What does &ldquo;Approve&rdquo; mean?</p>
+            <p class="mt-1 text-blue-900">Approval unlocks Steps 2–4 for the <strong>same employee who created</strong> the enrollment. They can add policy receipt and complete onboarding. You are recorded as the approver. Reject stops the application; Send back asks the employee to fix Step 1.</p>
+        </div>
     </div>
 </div>
 
-<!-- Filter Card -->
+<!-- Filters -->
 <div class="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
-    <div class="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white px-6 py-4">
-        <h3 class="font-semibold text-slate-900 flex items-center gap-2">
-            <i class="ri-filter-line text-lg text-slate-600"></i>
-            Advanced Filters
-        </h3>
-    </div>
-    
-    <form method="GET" action="{{ route('admin.enrollment.pending') }}" class="p-6">
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6">
-            <!-- Search -->
+    <button type="button" onclick="document.getElementById('pending-filters').classList.toggle('hidden')" class="flex w-full items-center justify-between px-5 py-4 text-left font-semibold text-slate-900">
+        <span class="flex items-center gap-2"><i class="ri-filter-3-line text-lg text-slate-500"></i> Filters</span>
+        <i class="ri-arrow-down-s-line text-xl text-slate-400"></i>
+    </button>
+    <form id="pending-filters" method="GET" action="{{ route('admin.enrollment.pending') }}" class="hidden border-t border-slate-100 p-5">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <div class="lg:col-span-2">
-                <label class="block text-xs font-semibold text-slate-700 mb-2">Search</label>
-                <input type="text" name="search" value="{{ request('search') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="ID, Customer, Phone...">
+                <label class="mb-1 block text-xs font-semibold text-slate-600">Search</label>
+                <input type="text" name="search" value="{{ request('search') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Customer ID, name, phone…">
             </div>
-
-            <!-- Date From -->
             <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-2">From Date</label>
-                <input type="date" name="date_from" value="{{ request('date_from') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                <label class="mb-1 block text-xs font-semibold text-slate-600">From</label>
+                <input type="date" name="date_from" value="{{ request('date_from') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
             </div>
-
-            <!-- Date To -->
             <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-2">To Date</label>
-                <input type="date" name="date_to" value="{{ request('date_to') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                <label class="mb-1 block text-xs font-semibold text-slate-600">To</label>
+                <input type="date" name="date_to" value="{{ request('date_to') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
             </div>
-
-            <!-- Status -->
             <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-2">Status</label>
-                <select name="status" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-                    <option value="">All Status</option>
-                    <option value="pending" {{ request('status', 'pending') === 'pending' ? 'selected' : '' }}>Pending</option>
-                    <option value="approved" {{ request('status') === 'approved' ? 'selected' : '' }}>Approved</option>
-                    <option value="rejected" {{ request('status') === 'rejected' ? 'selected' : '' }}>Rejected</option>
+                <label class="mb-1 block text-xs font-semibold text-slate-600">Submitted by</label>
+                <select name="employee_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">All employees</option>
+                    @foreach($employees as $employee)
+                        <option value="{{ $employee->id }}" @selected((string) request('employee_id') === (string) $employee->id)>{{ $employee->name }}</option>
+                    @endforeach
                 </select>
             </div>
-
-            <!-- Employee -->
             <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-2">Employee</label>
-                <select name="employee_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-                    <option value="">All Employees</option>
-                    @foreach($employees as $employee)
-                        <option value="{{ $employee->id }}" {{ (string) request('employee_id') === (string) $employee->id ? 'selected' : '' }}>
-                            {{ $employee->name }}
-                        </option>
-                    @endforeach
+                <label class="mb-1 block text-xs font-semibold text-slate-600">Status</label>
+                <select name="status" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="pending" @selected(request('status', 'pending') === 'pending')>Pending only</option>
+                    <option value="" @selected(request('status') === '')>All statuses</option>
+                    <option value="approved" @selected(request('status') === 'approved')>Approved</option>
+                    <option value="rejected" @selected(request('status') === 'rejected')>Rejected</option>
                 </select>
             </div>
         </div>
-
-        <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-            <!-- Month -->
-            <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-2">Month</label>
-                <select name="search_month" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-                    <option value="">All Months</option>
-                    @php $months = ['January','February','March','April','May','June','July','August','September','October','November','December']; @endphp
-                    @foreach($months as $month)
-                        <option value="{{ $month }}" {{ request('search_month') === $month ? 'selected' : '' }}>{{ $month }}</option>
-                    @endforeach
-                </select>
-            </div>
-
-            <!-- Year -->
-            <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-2">Year</label>
-                <select name="search_year" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-                    <option value="">All Years</option>
-                    @foreach(range((int) date('Y') + 1, 2006) as $year)
-                        <option value="{{ $year }}" {{ (string) request('search_year') === (string) $year ? 'selected' : '' }}>{{ $year }}</option>
-                    @endforeach
-                </select>
-            </div>
-
-            <!-- Button Group -->
-            <div class="flex items-end gap-2 lg:col-span-2">
-                <button type="submit" class="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
-                    <i class="ri-search-line text-lg"></i>
-                    Apply Filters
-                </button>
-                <a href="{{ route('admin.enrollment.pending') }}" class="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                    Reset
-                </a>
-            </div>
+        <div class="mt-4 flex gap-2">
+            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Apply</button>
+            <a href="{{ route('admin.enrollment.pending') }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
         </div>
     </form>
 </div>
 
-<!-- Table Section -->
 @if($enrollments->total() > 0)
-    <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead>
-                    <tr class="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Customer ID</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Proposer</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Agent</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Created By</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Submitted Date</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
-                        @if(($canEdit ?? false) || ($canApprove ?? false) || ($canReject ?? false) || ($canReturn ?? false))
-                            <th class="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
-                        @endif
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                    @foreach($enrollments as $enr)
-                        <tr class="hover:bg-blue-50 transition-colors">
-                            <!-- Customer ID -->
-                            <td class="px-4 py-3">
-                                <div class="font-medium text-slate-900">{{ $enr->customer_id_no }}</div>
-                            </td>
-
-                            <!-- Proposer Name -->
-                            <td class="px-4 py-3">
-                                <div class="text-sm text-slate-900">{{ $enr->doctor_name }}</div>
-                            </td>
-
-                            <!-- Agent Name -->
-                            <td class="px-4 py-3">
-                                <div class="text-sm text-slate-700">{{ $enr->agent_name }}</div>
-                            </td>
-
-                            <!-- Created By -->
-                            <td class="px-4 py-3">
-                                <div class="text-sm">
-                                    <div class="font-medium text-slate-900">{{ $enr->creator?->name ?? 'N/A' }}</div>
-                                    <div class="text-xs text-slate-500 mt-0.5">{{ $enr->created_by_role ?? $enr->creator?->role ?? 'N/A' }}</div>
-                                </div>
-                            </td>
-
-                            <!-- Submitted Date -->
-                            <td class="px-4 py-3">
-                                <div class="text-sm text-slate-700">{{ optional($enr->created_at)->format('d M Y') }}</div>
-                                <div class="text-xs text-slate-500">{{ optional($enr->created_at)->format('H:i') }}</div>
-                            </td>
-
-                            <!-- Status -->
-                            <td class="px-4 py-3">
-                                @php $status = strtolower((string) $enr->status); @endphp
-                                @if($status === 'pending')
-                                    <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                                        <i class="ri-time-line text-xs"></i>
-                                        Pending approval
-                                    </span>
-                                @elseif($status === 'approved')
-                                    <div>
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                                            <i class="ri-check-circle-line text-xs"></i>
-                                            Approved
-                                        </span>
-                                        @if(optional($enr->approver)->name)
-                                            <div class="mt-1 text-2xs text-slate-500">By {{ optional($enr->approver)->name }} • {{ optional($enr->approved_at)->format('d M Y H:i') }}</div>
-                                        @endif
-                                    </div>
-                                @elseif($status === 'rejected')
-                                    <div>
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">
-                                            <i class="ri-close-circle-line text-xs"></i>
-                                            Rejected
-                                        </span>
-                                        @if(optional($enr->approver)->name)
-                                            <div class="mt-1 text-2xs text-slate-500">By {{ optional($enr->approver)->name }} • {{ optional($enr->updated_at ?? $enr->approved_at)->format('d M Y H:i') }}</div>
-                                        @endif
-                                    </div>
-                                @else
-                                    <span class="inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{{ ucfirst($status) }}</span>
-                                @endif
-                            </td>
-
-                            @if(($canEdit ?? false) || ($canApprove ?? false) || ($canReject ?? false) || ($canReturn ?? false))
-                                <!-- Actions -->
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center justify-center gap-2">
-                                    <!-- View Details -->
-                                    <a href="{{ route('admin.enrollment.details', $enr->id) }}" class="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors" title="View Details">
-                                        <i class="ri-eye-line text-base"></i>
-                                    </a>
-
-                                    @if($status === 'pending' && ($enr->workflow_status ?? '') !== 'returned_for_correction')
-                                        @php
-                                            $allowRowEdit = (($canEdit ?? false) && (($isSuperAdmin ?? false) || ($isAdmin ?? false)));
-                                        @endphp
-
-                                            @if($allowRowEdit)
-                                                <a href="{{ route('admin.enrollment.edit', $enr->id) }}" class="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors" title="Edit">
-                                                    <i class="ri-edit-line text-base"></i>
-                                                    Edit
-                                                </a>
-                                            @endif
-                                            @if($canApprove ?? false)
-                                            <form action="{{ route('admin.enrollment.approve', $enr->id) }}" method="POST" class="inline" onclick="return confirm('Approve this enrollment?')">
-                                                @csrf
-                                                <button type="submit" class="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700 transition-colors" title="Approve">
-                                                    <i class="ri-check-line text-base"></i>
-                                                    Approve
-                                                </button>
-                                            </form>
-                                        @endif
-                                        @if($canReject ?? false)
-                                            <form action="{{ route('admin.enrollment.reject', $enr->id) }}" method="POST" class="inline" onclick="return confirm('Reject this enrollment?')">
-                                                @csrf
-                                                <button type="submit" class="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700 transition-colors" title="Reject">
-                                                    <i class="ri-close-line text-base"></i>
-                                                    Reject
-                                                </button>
-                                            </form>
-                                        @endif
-
-                                        @if(!$canApprove && !$canReject)
-                                            <span class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
-                                                —
-                                            </span>
-                                        @endif
-                                    @else
-                                        <span class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
-                                            —
-                                        </span>
-                                    @endif
-                                    </div>
-                                </td>
+    <div class="space-y-4">
+        @foreach($enrollments as $enr)
+            @php
+                $status = strtolower((string) $enr->status);
+                $readiness = $documentReadiness[$enr->id] ?? ['missing' => [], 'ready' => false];
+                $planLabel = match ((int) ($enr->plan ?? 0)) {
+                    1 => 'Normal', 2 => 'High Risk', 3 => 'Combo', default => '—',
+                };
+            @endphp
+            <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 class="text-xl font-bold text-slate-900">{{ $enr->doctor_name }}</h2>
+                            @if($status === 'pending')
+                                <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                                    <i class="ri-time-line"></i> Pending
+                                </span>
+                            @elseif($status === 'approved')
+                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">Approved</span>
+                            @elseif($status === 'rejected')
+                                <span class="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-800">Rejected</span>
                             @endif
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
+                            @if($readiness['ready'])
+                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200">Docs OK</span>
+                            @else
+                                <span class="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">Missing docs</span>
+                            @endif
+                        </div>
 
-        <!-- Pagination -->
-        @if($enrollments->hasPages())
-            <div class="border-t border-slate-200 bg-slate-50 px-4 py-4">
-                <div class="flex items-center justify-between">
-                    <div class="text-xs text-slate-600">
-                        Showing <span class="font-semibold">{{ $enrollments->firstItem() }}</span> to <span class="font-semibold">{{ $enrollments->lastItem() }}</span> of <span class="font-semibold">{{ $enrollments->total() }}</span> results
+                        <p class="mt-1 font-mono text-sm text-slate-600">{{ $enr->customer_id_no }}</p>
+
+                        <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            <div class="rounded-lg bg-slate-50 px-3 py-2">
+                                <p class="text-xs font-semibold uppercase text-slate-500">Submitted by</p>
+                                <p class="mt-0.5 font-semibold text-slate-900">{{ $enr->creator?->name ?? 'Unknown' }}</p>
+                                <p class="text-xs text-slate-500">{{ $enr->created_by_role ?? $enr->creator?->role ?? 'employee' }}
+                                    @if($enr->creator?->phone) · {{ $enr->creator->phone }} @endif
+                                </p>
+                            </div>
+                            <div class="rounded-lg bg-slate-50 px-3 py-2">
+                                <p class="text-xs font-semibold uppercase text-slate-500">Submitted on</p>
+                                <p class="mt-0.5 font-semibold text-slate-900">{{ optional($enr->created_at)->format('d M Y') }}</p>
+                                <p class="text-xs text-slate-500">{{ optional($enr->created_at)->format('h:i A') }} · {{ optional($enr->created_at)->diffForHumans() }}</p>
+                            </div>
+                            <div class="rounded-lg bg-slate-50 px-3 py-2">
+                                <p class="text-xs font-semibold uppercase text-slate-500">Plan / contact</p>
+                                <p class="mt-0.5 font-semibold text-slate-900">{{ $planLabel }} · {{ $enr->specialization?->name ?? '—' }}</p>
+                                <p class="text-xs text-slate-500">{{ $enr->mobile1 ?? '—' }}</p>
+                            </div>
+                        </div>
+
+                        @if(!$readiness['ready'] && !empty($readiness['missing']))
+                            <p class="mt-3 text-xs text-rose-700"><strong>Cannot approve until uploaded:</strong> {{ implode(', ', $readiness['missing']) }}</p>
+                        @endif
+
+                        @if($status === 'approved' && $enr->approver)
+                            <p class="mt-3 text-xs text-emerald-800">Approved by <strong>{{ $enr->approver->name }}</strong> · {{ optional($enr->approved_at)->format('d M Y, h:i A') }}</p>
+                        @endif
                     </div>
-                    <div>{{ $enrollments->links() }}</div>
+
+                    <div class="flex flex-col gap-2 sm:flex-row lg:flex-col lg:items-stretch lg:min-w-[200px]">
+                        <a href="{{ route('admin.enrollment.details', $enr->id) }}" class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700">
+                            <i class="ri-file-search-line text-lg"></i>
+                            Review full application
+                        </a>
+                        @if($status === 'pending' && ($enr->workflow_status ?? '') !== 'returned_for_correction')
+                            @if($canApprove && $readiness['ready'])
+                                <form action="{{ route('admin.enrollment.approve', $enr->id) }}" method="POST" onsubmit="return confirm('Approve this enrollment? The submitting employee will be able to continue Steps 2–4.');">
+                                    @csrf
+                                    <button type="submit" class="w-full rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">
+                                        Quick approve
+                                    </button>
+                                </form>
+                            @elseif($canApprove && !$readiness['ready'])
+                                <span class="block rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-xs text-slate-500">Open application to review missing documents</span>
+                            @endif
+                        @endif
+                    </div>
                 </div>
-            </div>
-        @endif
+            </article>
+        @endforeach
     </div>
+
+    @if($enrollments->hasPages())
+        <div class="mt-6">{{ $enrollments->links() }}</div>
+    @endif
 @else
-    <!-- Empty State -->
-    <div class="rounded-xl border border-slate-200 bg-white">
-        <!-- Empty Content -->
-        <div class="px-6 py-12 sm:px-12">
-            <div class="mx-auto max-w-sm text-center">
-                <!-- Icon -->
-                <div class="mb-6 flex justify-center">
-                    <div class="rounded-full bg-blue-100 p-3">
-                        <i class="ri-check-double-line text-3xl text-blue-600"></i>
-                    </div>
-                </div>
-
-                <!-- Content -->
-                <h2 class="text-xl font-bold text-slate-900">No Pending Approvals</h2>
-                <p class="mt-2 text-sm text-slate-600">All enrollment applications have been reviewed. Great job staying on top of things!</p>
-
-                <!-- Action Buttons -->
-                <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                    <a href="{{ route('admin.enrollment.create') }}" class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
-                        <i class="ri-add-line text-lg"></i>
-                        New Enrollment
-                    </a>
-                    <a href="{{ route('admin.enrollment.pending') }}" class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                        <i class="ri-refresh-line text-lg"></i>
-                        Refresh
-                    </a>
-                </div>
-            </div>
+    <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
+        <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+            <i class="ri-checkbox-circle-line text-3xl text-emerald-600"></i>
+        </div>
+        <h2 class="mt-4 text-xl font-bold text-slate-900">No pending applications</h2>
+        <p class="mx-auto mt-2 max-w-md text-sm text-slate-600">Every enrollment in the queue has been reviewed. New submissions from employees will appear here automatically.</p>
+        <div class="mt-8 flex flex-wrap justify-center gap-3">
+            <a href="{{ route('admin.enrollment.create') }}" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+                <i class="ri-add-line"></i> New enrollment (admin)
+            </a>
+            <a href="{{ route('admin.enrollment.monitoring', 'new_entries') }}" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                View new entries
+            </a>
         </div>
     </div>
 @endif
-
 @endsection

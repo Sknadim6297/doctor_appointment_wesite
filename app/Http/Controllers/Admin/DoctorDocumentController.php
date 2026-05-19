@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DoctorDocument;
 use App\Models\Enrollment;
 use App\Services\DoctorDocumentService;
+use App\Services\EnrollmentRecordAccessService;
 use App\Support\DoctorDocumentCatalog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -17,11 +18,13 @@ class DoctorDocumentController extends Controller
 {
     public function __construct(
         private readonly DoctorDocumentService $doctorDocumentService,
+        private readonly EnrollmentRecordAccessService $recordAccess,
     ) {
     }
 
     public function storeForDoctor(Request $request, Enrollment $doctor)
     {
+        $this->recordAccess->assertCanAccessRecord($request->user(), $doctor);
         $data = $request->validate([
             'document_category' => 'required|string|in:' . implode(',', DoctorDocumentCatalog::categoryOrder()),
             'document_type' => 'nullable|string|max:64',
@@ -58,6 +61,7 @@ class DoctorDocumentController extends Controller
 
     public function view(Enrollment $doctor, DoctorDocument $document)
     {
+        $this->recordAccess->assertCanAccessRecord(request()->user(), $doctor);
         $this->authorizeDocument($doctor, $document);
 
         if (!$document->fileExists()) {
@@ -75,6 +79,7 @@ class DoctorDocumentController extends Controller
 
     public function download(Enrollment $doctor, DoctorDocument $document): StreamedResponse
     {
+        $this->recordAccess->assertCanAccessRecord(request()->user(), $doctor);
         $this->authorizeDocument($doctor, $document);
 
         if (!$document->fileExists()) {
@@ -89,6 +94,7 @@ class DoctorDocumentController extends Controller
 
     public function approve(Request $request, Enrollment $doctor, DoctorDocument $document)
     {
+        $this->recordAccess->assertCanAccessRecord($request->user(), $doctor);
         $this->authorizeDocument($doctor, $document);
 
         $data = $request->validate([
@@ -109,6 +115,7 @@ class DoctorDocumentController extends Controller
 
     public function reject(Request $request, Enrollment $doctor, DoctorDocument $document)
     {
+        $this->recordAccess->assertCanAccessRecord($request->user(), $doctor);
         $this->authorizeDocument($doctor, $document);
 
         $data = $request->validate([
@@ -129,6 +136,7 @@ class DoctorDocumentController extends Controller
 
     public function reupload(Request $request, Enrollment $doctor, DoctorDocument $document)
     {
+        $this->recordAccess->assertCanAccessRecord($request->user(), $doctor);
         $this->authorizeDocument($doctor, $document);
 
         if (!$document->isRejected()) {

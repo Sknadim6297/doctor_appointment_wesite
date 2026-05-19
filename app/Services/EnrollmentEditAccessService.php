@@ -22,6 +22,10 @@ class EnrollmentEditAccessService
 
     public function requiresOtpGuard(Enrollment $enrollment): bool
     {
+        if (EnrollmentWorkflow::isRejected($enrollment)) {
+            return true;
+        }
+
         $wf = EnrollmentWorkflow::normalize($enrollment->workflow_status);
 
         if ($wf === EnrollmentWorkflow::RETURNED_FOR_CORRECTION) {
@@ -36,6 +40,10 @@ class EnrollmentEditAccessService
             return false;
         }
 
+        if ($enrollment->status === 'pending') {
+            return false;
+        }
+
         if ($enrollment->status === 'approved') {
             return true;
         }
@@ -44,17 +52,78 @@ class EnrollmentEditAccessService
             return true;
         }
 
-        if ($enrollment->status === 'pending' && in_array($wf, EnrollmentWorkflow::gateStatuses(), true)) {
+        return false;
+    }
+
+    public function isEnrollmentOwner(?User $user, Enrollment $enrollment): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        $uid = (int) $user->id;
+
+        return (int) $enrollment->created_by === $uid || (int) $enrollment->agent_id === $uid;
+    }
+
+    /**
+     * Creator/agent and administrators may edit without OTP during onboarding.
+     */
+    public function canBypassOtp(?User $user, Enrollment $enrollment): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if ($this->isSuperAdmin($user) || $this->isPrivilegedAdmin($user)) {
             return true;
         }
 
-        if ($enrollment->status === 'pending'
-            && $wf === EnrollmentWorkflow::IN_PROGRESS
-            && (int) ($enrollment->current_step ?? 1) >= 2) {
+        if (EnrollmentWorkflow::isRejected($enrollment)) {
+            return $this->activeSessionFor($enrollment, $user) !== null;
+        }
+
+        if (!$this->isEnrollmentOwner($user, $enrollment)) {
+            return false;
+        }
+
+        $wf = EnrollmentWorkflow::normalize($enrollment->workflow_status);
+
+        if ($enrollment->status === 'approved') {
+            return true;
+        }
+
+        if ($wf === EnrollmentWorkflow::RETURNED_FOR_CORRECTION) {
+            return true;
+        }
+
+        if ($enrollment->is_step_incomplete) {
+            return true;
+        }
+
+        if ($wf === EnrollmentWorkflow::IN_PROGRESS && (int) ($enrollment->current_step ?? 1) >= 2) {
             return true;
         }
 
         return false;
+    }
+
+    public function requiresOtpGuardForUser(Enrollment $enrollment, ?User $user): bool
+    {
+        return $this->requiresOtpGuard($enrollment) && !$this->canBypassOtp($user, $enrollment);
+    }
+
+    public function canUserContinueWorkflow(?User $user, Enrollment $enrollment): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if ($this->canBypassOtp($user, $enrollment)) {
+            return true;
+        }
+
+        return $this->activeSessionFor($enrollment, $user) !== null;
     }
 
     public function expireStaleSessions(): void
@@ -108,7 +177,7 @@ class EnrollmentEditAccessService
     {
         $this->expireStaleSessions();
 
-        $locked = $viewer && !$this->isSuperAdmin($viewer) && $this->requiresOtpGuard($enrollment);
+        $locked = $viewer && $this->requiresOtpGuardForUser($enrollment, $viewer);
         $session = $viewer ? $this->activeSessionFor($enrollment, $viewer) : null;
         $pending = $this->pendingOtpSessionForEnrollment($enrollment);
 
@@ -118,7 +187,7 @@ class EnrollmentEditAccessService
             'session_expires_at' => $session?->session_expires_at,
             'pending_otp' => (bool) $pending,
             'requester' => $pending?->requester,
-            'can_request' => (bool) ($viewer && !$this->isSuperAdmin($viewer) && $locked && $this->canUserRequest($viewer, $enrollment)),
+            'can_request' => (bool) ($viewer && $locked && $this->canUserRequest($viewer, $enrollment)),
         ];
     }
 
@@ -128,13 +197,11 @@ class EnrollmentEditAccessService
             return false;
         }
 
-        if (!$this->requiresOtpGuard($enrollment)) {
+        if (!$this->requiresOtpGuardForUser($enrollment, $user)) {
             return false;
         }
 
-        $uid = (int) $user->id;
-
-        return (int) $enrollment->created_by === $uid || (int) $enrollment->agent_id === $uid;
+        return $this->isEnrollmentOwner($user, $enrollment);
     }
 
     public function requestAccess(Request $request, Enrollment $enrollment, User $requester): array
@@ -143,7 +210,7 @@ class EnrollmentEditAccessService
             return ['success' => false, 'message' => 'Super Admin has direct edit access and does not need edit access requests.'];
         }
 
-        if (!$this->requiresOtpGuard($enrollment)) {
+        if (!$this->requiresOtpGuardForUser($enrollment, $requester)) {
             return ['success' => false, 'message' => 'This enrollment does not require an edit access request.'];
         }
 
@@ -190,6 +257,15 @@ class EnrollmentEditAccessService
                 $admin->notify(new EnrollmentEditAccessOtpNotification($otp, $enrollment, $requester, $otpMinutes));
             }
         }
+
+        app(WorkflowNotificationService::class)->notifyAdmins(
+            'otp_edit_access_request',
+            'Edit access OTP requested',
+            ($requester->name ?: 'User') . ' requested OTP to edit enrollment ' . ($enrollment->doctor_name ?: '#' . $enrollment->id) . '.',
+            $enrollment,
+            $requester,
+            route('admin.enrollment.details', $enrollment->id),
+        );
 
         $this->activityLogService->log(
             $request,
@@ -269,6 +345,19 @@ class EnrollmentEditAccessService
             ]
         );
 
+        $requester = User::query()->find($session->requested_by_user_id);
+        if ($requester) {
+            app(WorkflowNotificationService::class)->notifyUser(
+                $requester,
+                'otp_edit_access_granted',
+                'Edit access approved',
+                'An administrator approved your OTP. You can edit the enrollment for ' . $sessionMinutes . ' minutes.',
+                $enrollment,
+                $admin,
+                route('admin.enrollment.edit', $enrollment->id),
+            );
+        }
+
         return [
             'success' => true,
             'message' => 'Edit access granted for ' . $sessionMinutes . ' minutes.',
@@ -291,18 +380,32 @@ class EnrollmentEditAccessService
 
     private function isPrivilegedAdmin(?User $user): bool
     {
-        return (bool) ($user && (
-            in_array(($user->role ?? null), ['admin', 'super_admin'], true) ||
-            (method_exists($user, 'hasAdminRole') && $user->hasAdminRole(['admin', 'super_admin']))
-        ));
+        if (!$user) {
+            return false;
+        }
+
+        if (in_array(($user->role ?? null), ['admin', 'super_admin'], true)) {
+            return true;
+        }
+
+        return $user->exists
+            && method_exists($user, 'hasAdminRole')
+            && $user->hasAdminRole(['admin', 'super_admin']);
     }
 
     private function isSuperAdmin(?User $user): bool
     {
-        return (bool) ($user && (
-            (($user->role ?? null) === 'super_admin') ||
-            (method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin'))
-        ));
+        if (!$user) {
+            return false;
+        }
+
+        if (($user->role ?? null) === 'super_admin') {
+            return true;
+        }
+
+        return $user->exists
+            && method_exists($user, 'hasAdminRole')
+            && $user->hasAdminRole('super_admin');
     }
 
     public function assertMayPerformEdit(Request $request, Enrollment $enrollment, User $user): ?\Illuminate\Http\RedirectResponse
@@ -311,7 +414,7 @@ class EnrollmentEditAccessService
             return null;
         }
 
-        if (!$this->requiresOtpGuard($enrollment)) {
+        if (!$this->requiresOtpGuardForUser($enrollment, $user)) {
             return null;
         }
 
@@ -326,11 +429,7 @@ class EnrollmentEditAccessService
 
     public function assertMayPerformEditJson(Request $request, Enrollment $enrollment, User $user): ?\Illuminate\Http\JsonResponse
     {
-        if ($this->isSuperAdmin($user)) {
-            return null;
-        }
-
-        if (!$this->requiresOtpGuard($enrollment)) {
+        if (!$this->requiresOtpGuardForUser($enrollment, $user)) {
             return null;
         }
 

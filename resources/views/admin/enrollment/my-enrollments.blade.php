@@ -4,16 +4,32 @@
 @section('page-title', 'My Enrollments')
 
 @section('content')
-<div class="mb-6 flex items-center justify-between">
+<div class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
     <div>
         <h1 class="text-3xl font-bold text-slate-900">My Enrollments</h1>
         <p class="mt-1 text-slate-600">Track only the enrollments submitted from your account.</p>
     </div>
-    <div class="rounded-2xl bg-blue-50 px-4 py-3 text-right">
-        <div class="text-3xl font-bold text-blue-600">{{ $enrollments->total() }}</div>
-        <div class="text-sm text-slate-600">Submitted by you</div>
+    <div class="flex flex-wrap gap-2">
+        <a href="{{ route('admin.enrollment.create') }}" class="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">New enrollment</a>
     </div>
 </div>
+
+@if(!empty($employeeStats))
+<div class="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    @foreach([
+        ['k' => 'draft', 'label' => 'Drafts'],
+        ['k' => 'pending', 'label' => 'Pending'],
+        ['k' => 'approved', 'label' => 'Approved'],
+        ['k' => 'rejected', 'label' => 'Rejected'],
+        ['k' => 'incomplete', 'label' => 'In progress'],
+    ] as $stat)
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-xs font-semibold uppercase text-slate-500">{{ $stat['label'] }}</p>
+            <p class="mt-1 text-2xl font-bold text-slate-900">{{ number_format($employeeStats[$stat['k']] ?? 0) }}</p>
+        </div>
+    @endforeach
+</div>
+@endif
 
 <div class="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
     <div class="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white px-6 py-4">
@@ -47,39 +63,30 @@
                 <tr class="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
                     <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Customer ID</th>
                     <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Proposer</th>
-                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Submitted</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Step</th>
                     <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Status</th>
                     <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600">Action</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
                 @forelse($enrollments as $enr)
-                    @php $status = strtolower((string) ($enr->status ?? 'pending')); @endphp
-                    <tr class="hover:bg-blue-50 transition-colors">
-                        <td class="px-4 py-3">
-                            <div class="font-medium text-slate-900">{{ $enr->customer_id_no }}</div>
-                        </td>
+                    <tr class="transition-colors hover:bg-blue-50">
+                        <td class="px-4 py-3 font-medium text-slate-900">{{ $enr->customer_id_no }}</td>
                         <td class="px-4 py-3">
                             <div class="text-sm text-slate-900">{{ $enr->doctor_name }}</div>
                             <div class="text-xs text-slate-500">{{ $enr->mobile1 ?? '—' }}</div>
-                        </td>
-                        <td class="px-4 py-3">
-                            <div class="text-sm text-slate-700">{{ optional($enr->created_at)->format('d M Y') }}</div>
-                            <div class="text-xs text-slate-500">{{ optional($enr->created_at)->format('H:i') }}</div>
-                        </td>
-                        <td class="px-4 py-3">
-                            @if($status === 'pending')
-                                <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">Pending</span>
-                            @elseif($status === 'approved')
-                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Approved</span>
-                            @elseif($status === 'rejected')
-                                <span class="inline-flex items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">Rejected</span>
+                            @if($enr->status === 'rejected' && $enr->rejection_reason)
+                                <p class="mt-1 text-xs text-rose-700">{{ Str::limit($enr->rejection_reason, 80) }}</p>
                             @endif
                         </td>
+                        <td class="px-4 py-3 text-sm font-medium text-slate-800">Step {{ (int) ($enr->current_step ?? 1) }}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {{ \App\Support\EnrollmentWorkflow::dashboardBadgeClasses($enr) }}">
+                                {{ \App\Support\EnrollmentWorkflow::dashboardStatusLabel($enr) }}
+                            </span>
+                        </td>
                         <td class="px-4 py-3 text-center">
-                            <a href="{{ route('admin.my-enrollments.show', $enr->id) }}" class="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors" title="View">
-                                View
-                            </a>
+                            <a href="{{ route('admin.my-enrollments.show', $enr->id) }}" class="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
                         </td>
                     </tr>
                 @empty
@@ -92,9 +99,7 @@
     </div>
 
     @if($enrollments->hasPages())
-        <div class="border-t border-slate-200 bg-slate-50 px-4 py-4">
-            {{ $enrollments->links() }}
-        </div>
+        <div class="border-t border-slate-200 bg-slate-50 px-4 py-4">{{ $enrollments->links() }}</div>
     @endif
 </div>
 @endsection

@@ -80,6 +80,23 @@ class DoctorPostController extends Controller
         );
     }
 
+    /**
+     * Step 4 of the enrollment workflow (uses enrollment edit permission, not posts module).
+     */
+    public function storeForEnrollment(Request $request, Enrollment $enrollment)
+    {
+        $request->merge([
+            'doctor' => $enrollment->id,
+            'finalize_enrollment_flow' => 1,
+            'return_to' => route('admin.enrollment.success', $enrollment->id),
+        ]);
+
+        return $this->savePostRecord(
+            $request,
+            redirectRoute: route('admin.enrollment.success', $enrollment->id)
+        );
+    }
+
     private function savePostRecord(Request $request, string $redirectRoute)
     {
         $data = $request->validate([
@@ -140,20 +157,27 @@ class DoctorPostController extends Controller
 
             $enrollment->forceFill([
                 'workflow_status' => EnrollmentWorkflow::COMPLETED,
-                'is_step_incomplete' => false,
                 'current_step' => 4,
                 'completed_steps' => [1, 2, 3, 4],
+                'status' => 'approved',
+                'approved_by' => $enrollment->approved_by ?? Auth::id(),
+                'approved_at' => $enrollment->approved_at ?? now(),
                 'last_activity_at' => now(),
+                'workflow_completed_at' => now(),
             ])->save();
+
+            $promoted = $this->doctorDocumentService->promoteToActiveDoctorIfEligible($enrollment);
 
             $this->activityLogService->log(
                 $request,
                 'enrollment',
-                'workflow_completed',
+                $promoted ? 'activated_doctor' : 'workflow_completed',
                 $enrollment,
                 Auth::user(),
-                'Completed enrollment workflow (Step 4 post submission).',
-                ['enrollment_id' => $enrollment->id]
+                $promoted
+                    ? 'Enrollment completed and promoted to active Doctor List.'
+                    : 'Completed enrollment workflow; pending required document verification.',
+                ['enrollment_id' => $enrollment->id, 'production_active' => $promoted]
             );
         }
 

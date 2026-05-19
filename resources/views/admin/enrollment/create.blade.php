@@ -35,6 +35,8 @@
         </div>
     @endif
 
+    <div id="autosave-status" class="mb-4 hidden rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800" role="status" aria-live="polite"></div>
+
     <form method="POST" action="{{ $submitRoute ?? ($enrollment ? route('admin.enrollment.update', optional($enrollment)->id) : route('admin.enrollment.store')) }}" id="enrollmentForm" novalidate enctype="multipart/form-data">
         @csrf
         <input type="hidden" name="workflow_step" value="1">
@@ -181,7 +183,8 @@
                           <input type="text" name="mobile1" id="mobile1"
                               value="{{ old('mobile1', optional($enrollment)->mobile1 ?? '') }}"
                            class="form-input @error('mobile1') border-red-400 @enderror"
-                           placeholder="Primary mobile">
+                           placeholder="10-digit mobile"
+                           inputmode="numeric" maxlength="10" pattern="[6-9][0-9]{9}">
                     @error('mobile1')<p class="form-error">{{ $message }}</p>@enderror
                 </div>
 
@@ -190,7 +193,8 @@
                           <input type="text" name="mobile2" id="mobile2"
                               value="{{ old('mobile2', optional($enrollment)->mobile2 ?? '') }}"
                            class="form-input @error('mobile2') border-red-400 @enderror"
-                           placeholder="Alternate number">
+                           placeholder="10-digit mobile"
+                           inputmode="numeric" maxlength="10" pattern="[6-9][0-9]{9}">
                     @error('mobile2')<p class="form-error">{{ $message }}</p>@enderror
                 </div>
 
@@ -292,7 +296,8 @@
                           <input type="text" name="aadhar_card_no" id="aadhar_card_no"
                               value="{{ old('aadhar_card_no', optional($enrollment)->aadhar_card_no ?? '') }}"
                            class="form-input @error('aadhar_card_no') border-red-400 @enderror"
-                           placeholder="12-digit Aadhaar">
+                           placeholder="12-digit Aadhaar"
+                           inputmode="numeric" maxlength="12" pattern="\d{12}">
                     @error('aadhar_card_no')<p class="form-error">{{ $message }}</p>@enderror
                 </div>
 
@@ -301,7 +306,8 @@
                           <input type="text" name="pan_card_no" id="pan_card_no"
                               value="{{ old('pan_card_no', optional($enrollment)->pan_card_no ?? '') }}"
                            class="form-input @error('pan_card_no') border-red-400 @enderror"
-                           placeholder="10-digit PAN">
+                           placeholder="ABCDE1234F"
+                           maxlength="10" style="text-transform: uppercase;">
                     @error('pan_card_no')<p class="form-error">{{ $message }}</p>@enderror
                 </div>
 
@@ -320,7 +326,7 @@
             <div class="form-grid">
 
                 <div class="form-group lg:col-span-2">
-                    <label class="form-label">Are You a (Specialization) <span class="text-red-500">*</span></label>
+                    <label class="form-label">Doctor Specialization <span class="text-red-500">*</span></label>
                     <select name="specialization_id" id="specialization_id"
                             class="form-input @error('specialization_id') border-red-400 @enderror"
                             @change="onSpecializationChange($event.target.value)">
@@ -512,7 +518,7 @@
                 @php
                     use App\Support\DoctorDocumentCatalog;
                     $uploadedDocs = collect($existingDocuments ?? []);
-                    $docCategoryLabels = $documentCategoryLabels ?? DoctorDocumentCatalog::categoryLabels();
+                    $showDocVerification = $uploadedDocs->contains(fn ($doc) => $doc->requiresVerificationWorkflow($enrollment));
                 @endphp
 
                 @if(!empty($enrollment) && $uploadedDocs->isNotEmpty())
@@ -520,37 +526,52 @@
                         <h5 class="text-sm font-semibold text-slate-800 mb-1">Uploaded documents</h5>
                         <p class="text-xs text-slate-500 mb-3">These files are already on file. Upload again only to add or replace a document.</p>
                         <div class="overflow-x-auto">
-                            <table class="w-full min-w-[640px] border-collapse text-sm">
+                            <table class="w-full {{ $showDocVerification ? 'min-w-[640px]' : 'min-w-[480px]' }} border-collapse text-sm">
                                 <thead>
                                     <tr class="bg-slate-800 text-left text-xs uppercase tracking-wide text-white">
                                         <th class="px-3 py-2">Document</th>
-                                        <th class="px-3 py-2">Category</th>
-                                        <th class="px-3 py-2">Status</th>
+                                        @if($showDocVerification)
+                                            <th class="px-3 py-2">Category</th>
+                                            <th class="px-3 py-2">Status</th>
+                                        @else
+                                            <th class="px-3 py-2">Uploaded</th>
+                                        @endif
                                         <th class="px-3 py-2 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach($uploadedDocs as $doc)
+                                        @php $docNeedsVerification = $doc->requiresVerificationWorkflow($enrollment); @endphp
                                         <tr class="border-b border-slate-200 bg-white">
                                             <td class="px-3 py-2">
-                                                <div class="font-medium text-slate-800">{{ $doc->document_title ?: 'Document' }}</div>
-                                                <div class="text-xs text-slate-500">{{ $doc->displayFilename() }}</div>
+                                                <div class="font-medium text-slate-800">{{ $doc->displayTitle() }}</div>
+                                                @if($doc->displayFilename() !== $doc->displayTitle())
+                                                    <div class="text-xs text-slate-500">{{ $doc->displayFilename() }}</div>
+                                                @endif
                                             </td>
-                                            <td class="px-3 py-2 text-slate-600">{{ $doc->categoryLabel() }}</td>
-                                            <td class="px-3 py-2">
-                                                @php
-                                                    $statusClass = match($doc->verification_status) {
-                                                        'approved' => 'bg-emerald-100 text-emerald-800',
-                                                        'rejected' => 'bg-red-100 text-red-800',
-                                                        default => 'bg-amber-100 text-amber-800',
-                                                    };
-                                                @endphp
-                                                <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold {{ $statusClass }}">{{ $doc->statusLabel() }}</span>
-                                            </td>
+                                            @if($showDocVerification)
+                                                <td class="px-3 py-2 text-slate-600">{{ $doc->categoryLabel() }}</td>
+                                                <td class="px-3 py-2">
+                                                    @if($docNeedsVerification)
+                                                        @php
+                                                            $statusClass = match($doc->verification_status) {
+                                                                'approved' => 'bg-emerald-100 text-emerald-800',
+                                                                'rejected' => 'bg-red-100 text-red-800',
+                                                                default => 'bg-amber-100 text-amber-800',
+                                                            };
+                                                        @endphp
+                                                        <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold {{ $statusClass }}">{{ $doc->statusLabel() }}</span>
+                                                    @else
+                                                        <span class="text-xs text-slate-400">—</span>
+                                                    @endif
+                                                </td>
+                                            @else
+                                                <td class="px-3 py-2 text-slate-600 whitespace-nowrap">{{ optional($doc->created_at)->format('d M Y') ?? '—' }}</td>
+                                            @endif
                                             <td class="px-3 py-2 text-right whitespace-nowrap">
                                                 @if($doc->fileExists())
                                                     <a href="{{ route('admin.doctors.documents.view', ['doctor' => $enrollment->id, 'document' => $doc->id]) }}" target="_blank" class="text-blue-600 hover:underline text-xs font-semibold">View</a>
-                                                    <span class="text-slate-300 mx-1">|</span>
+                                                    <span class="text-slate-300 mx-1">/</span>
                                                     <a href="{{ route('admin.doctors.documents.download', ['doctor' => $enrollment->id, 'document' => $doc->id]) }}" class="text-blue-600 hover:underline text-xs font-semibold">Download</a>
                                                 @else
                                                     <span class="text-xs text-slate-400">File missing</span>
@@ -588,7 +609,7 @@
 
                         {{-- Other Documents (Form section) --}}
                         <div class="form-group">
-                            <label class="form-label">Other Documents</label>
+                            <label class="form-label">Supporting Documents</label>
                             <input type="file" name="doc_other_forms[]" id="doc_other_forms" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
                             <p class="form-helper">Multiple upload allowed • PDF, JPG, PNG, DOC, DOCX (Max 10MB each)</p>
                         </div>
@@ -638,7 +659,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {{-- Other Documents (Multiple) --}}
                         <div class="form-group md:col-span-2">
-                            <label class="form-label">Other Documents (Multiple Upload Allowed)</label>
+                            <label class="form-label">Supporting Documents (Multiple Upload Allowed)</label>
                             <input type="file" name="doc_other_documents[]" id="doc_other_documents" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-purple-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
                             <p class="form-helper">Multiple files allowed • PDF, JPG, PNG, DOC, DOCX (Max 10MB each)</p>
                         </div>
@@ -651,12 +672,16 @@
                 <div>
                     <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
                         <span>Payment Documents</span>
-                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Optional</span>
+                        <span class="text-xs px-2.5 py-0.5 rounded-full"
+                              :class="paymentMethod === '2' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'"
+                              x-text="paymentMethod === '2' ? 'Optional' : 'Proof required for Cheque / UPI'"></span>
                     </h5>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {{-- Payment Document Upload --}}
                         <div class="form-group md:col-span-2">
-                            <label class="form-label">Payment Document Upload</label>
+                            <label class="form-label">Payment Document Upload
+                                <span class="text-red-500" x-show="paymentMethod !== '2'">*</span>
+                            </label>
                             <input type="file" name="doc_payment_document" id="doc_payment_document" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-amber-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
                             <p class="form-helper">Receipt, Invoice, or Proof of Payment • PDF or Image (Max 10MB)</p>
                         </div>
@@ -1179,9 +1204,9 @@ function enrollmentForm(config) {
                     if (value && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(value)) {
                         errors.push('PAN must be in format: AAAAA0000A');
                     }
-                } else if (fieldName === 'mobile2') {
-                    if (value && !/^[0-9]{10}$/.test(value)) {
-                        errors.push('Mobile number must be exactly 10 digits');
+                } else if (fieldName === 'mobile1' || fieldName === 'mobile2') {
+                    if (value && !/^[6-9]\d{9}$/.test(value)) {
+                        errors.push('Mobile number must be exactly 10 digits starting with 6–9');
                     }
                 } else if (fieldName === 'doctor_name') {
                     if (!value) {
@@ -1262,14 +1287,18 @@ function enrollmentForm(config) {
 <script>
     if (typeof flatpickr !== 'undefined') {
         document.querySelectorAll('.datepicker').forEach(function (input) {
-            flatpickr(input, { dateFormat: 'd/m/Y' });
+            const opts = { dateFormat: 'd/m/Y' };
+            if (input.id === 'dob') {
+                opts.maxDate = 'today';
+            }
+            flatpickr(input, opts);
         });
     }
 
-    @if(!($isSuperAdmin ?? false))
     (function () {
         const form = document.getElementById('enrollmentForm');
         const workflowField = document.getElementById('workflow_enrollment_id');
+        const statusEl = document.getElementById('autosave-status');
         const autosaveUrl = @json(route('admin.enrollment.autosave'));
         let autosaveTimer = null;
         let autosaveQueued = false;
@@ -1279,12 +1308,47 @@ function enrollmentForm(config) {
             return;
         }
 
+        const showAutosaveStatus = function (message, tone) {
+            if (!statusEl) {
+                return;
+            }
+            statusEl.textContent = message;
+            statusEl.classList.remove('hidden', 'border-emerald-200', 'bg-emerald-50', 'text-emerald-800', 'border-amber-200', 'bg-amber-50', 'text-amber-800', 'border-red-200', 'bg-red-50', 'text-red-700');
+            if (tone === 'error') {
+                statusEl.classList.add('border-red-200', 'bg-red-50', 'text-red-700');
+            } else if (tone === 'saving') {
+                statusEl.classList.add('border-amber-200', 'bg-amber-50', 'text-amber-800');
+            } else {
+                statusEl.classList.add('border-emerald-200', 'bg-emerald-50', 'text-emerald-800');
+            }
+        };
+
+        const buildAutosavePayload = function () {
+            const payload = new FormData();
+            const token = form.querySelector('input[name="_token"]')?.value || '';
+            payload.set('_token', token);
+            payload.set('workflow_step', '1');
+            payload.set('workflow_enrollment_id', workflowField.value || '');
+
+            Array.from(form.elements).forEach(function (el) {
+                if (!el.name || el.disabled || el.type === 'file') {
+                    return;
+                }
+                if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) {
+                    return;
+                }
+                payload.append(el.name, el.value);
+            });
+
+            return payload;
+        };
+
         const scheduleAutosave = function () {
             autosaveQueued = true;
             if (autosaveTimer) {
                 clearTimeout(autosaveTimer);
             }
-
+            showAutosaveStatus('Unsaved changes — draft will save shortly…', 'saving');
             autosaveTimer = setTimeout(runAutosave, 2500);
         };
 
@@ -1295,10 +1359,7 @@ function enrollmentForm(config) {
 
             autosaveQueued = false;
             autosaveInFlight = true;
-
-            const payload = new FormData(form);
-            payload.set('workflow_step', '1');
-            payload.set('workflow_enrollment_id', workflowField.value || '');
+            showAutosaveStatus('Saving draft…', 'saving');
 
             fetch(autosaveUrl, {
                 method: 'POST',
@@ -1306,15 +1367,18 @@ function enrollmentForm(config) {
                     'X-CSRF-TOKEN': form.querySelector('input[name="_token"]')?.value || '',
                     'Accept': 'application/json',
                 },
-                body: payload,
+                body: buildAutosavePayload(),
             })
-                .then(response => response.json())
-                .then(data => {
-                    if (data && data.success && data.enrollment_id) {
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (ok && data && data.success && data.enrollment_id) {
                         workflowField.value = data.enrollment_id;
+                        showAutosaveStatus('Draft saved — you can resume from your dashboard.', 'saved');
+                        return;
                     }
+                    showAutosaveStatus((data && data.message) ? data.message : 'Draft could not be saved.', 'error');
                 })
-                .catch(() => {})
+                .catch(() => showAutosaveStatus('Draft could not be saved. Check your connection.', 'error'))
                 .finally(() => {
                     autosaveInFlight = false;
                 });
@@ -1324,6 +1388,5 @@ function enrollmentForm(config) {
         form.addEventListener('change', scheduleAutosave, true);
         setInterval(runAutosave, 25000);
     })();
-    @endif
 </script>
 @endsection

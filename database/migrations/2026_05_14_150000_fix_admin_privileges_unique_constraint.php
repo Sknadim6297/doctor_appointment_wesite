@@ -8,35 +8,41 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('admin_privileges', function (Blueprint $table): void {
-            try {
-                $table->dropUnique('admin_privileges_user_id_page_key_unique');
-            } catch (\Throwable $e) {
-                // Ignore if the legacy index is already gone.
-            }
+        $indexNames = collect(Schema::getConnection()->getSchemaBuilder()->getIndexes('admin_privileges'))
+            ->pluck('name')
+            ->map(fn ($name) => strtolower((string) $name))
+            ->all();
 
-            try {
+        if (in_array('admin_privileges_user_id_page_key_unique', $indexNames, true)) {
+            Schema::table('admin_privileges', function (Blueprint $table): void {
+                $table->dropUnique('admin_privileges_user_id_page_key_unique');
+            });
+        }
+
+        if (!in_array('admin_privileges_user_group_page_action_unique', $indexNames, true)) {
+            Schema::table('admin_privileges', function (Blueprint $table): void {
                 $table->unique(['user_id', 'group_key', 'page_key', 'action_key'], 'admin_privileges_user_group_page_action_unique');
-            } catch (\Throwable $e) {
-                // Ignore if the composite index already exists.
-            }
-        });
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('admin_privileges', function (Blueprint $table): void {
-            try {
-                $table->dropUnique('admin_privileges_user_group_page_action_unique');
-            } catch (\Throwable $e) {
-                // Ignore if the composite index is already gone.
-            }
+        $indexNames = collect(Schema::getConnection()->getSchemaBuilder()->getIndexes('admin_privileges'))
+            ->pluck('name')
+            ->map(fn ($name) => strtolower((string) $name))
+            ->all();
 
-            try {
+        if (in_array('admin_privileges_user_group_page_action_unique', $indexNames, true)) {
+            Schema::table('admin_privileges', function (Blueprint $table): void {
+                $table->dropUnique('admin_privileges_user_group_page_action_unique');
+            });
+        }
+
+        if (!in_array('admin_privileges_user_id_page_key_unique', $indexNames, true)) {
+            Schema::table('admin_privileges', function (Blueprint $table): void {
                 $table->unique(['user_id', 'page_key'], 'admin_privileges_user_id_page_key_unique');
-            } catch (\Throwable $e) {
-                // Ignore if the legacy index already exists.
-            }
-        });
+            });
+        }
     }
 };

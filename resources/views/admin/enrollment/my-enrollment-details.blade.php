@@ -39,6 +39,7 @@
         (method_exists($currentUser, 'hasAdminRole') && $currentUser->hasAdminRole('super_admin'))
     );
     $bypassesApprovalWorkflow = $isSuperAdmin || ($enrollment->created_by_role ?? '') === 'super_admin';
+    $isOwner = $currentUser && (int) $enrollment->created_by === (int) $currentUser->id;
     $editWorkflowUnlocked = $bypassesApprovalWorkflow || empty($ea['locked']) || !empty($ea['session_active']);
 @endphp
 
@@ -49,7 +50,9 @@
     @else
         <span class="btn btn-primary cursor-not-allowed opacity-50" aria-disabled="true" title="PDF download is available after approval">Download PDF</span>
     @endif
-    @if(!empty($ea['session_active']))
+    @if(!empty($workflowContinueCta))
+        <a href="{{ $workflowContinueCta['url'] }}" class="btn btn-primary">{{ $workflowContinueCta['button_label'] }}</a>
+    @elseif(!empty($ea['session_active']))
         <a href="{{ route('admin.enrollment.edit', $enrollment->id) }}" class="btn btn-primary">Edit enrollment (temporary)</a>
     @endif
     @if(!empty($ea['can_request']) && empty($ea['pending_otp']))
@@ -57,9 +60,9 @@
     @endif
 </div>
 
-@if(!empty($ea['locked']) && empty($ea['session_active']) && !$bypassesApprovalWorkflow)
+@if(!empty($ea['locked']) && empty($ea['session_active']) && !$bypassesApprovalWorkflow && !$isOwner)
     <div class="mb-4 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-        <strong>View only.</strong> Approved or submitted enrollments cannot be edited until an administrator verifies an OTP sent to their email.
+        <strong>View only.</strong> You do not have permission to edit this enrollment. Contact an administrator if you need access.
     </div>
 @endif
 
@@ -104,7 +107,14 @@
         </div>
     @elseif($status === 'rejected')
         <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-            <strong>Rejected:</strong> This enrollment was rejected and remains locked.
+            <p class="font-bold">Rejected</p>
+            <p class="mt-2">{{ $enrollment->rejection_reason ?: 'No reason provided.' }}</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('admin.enrollment.edit', $enrollment->id) }}" class="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold ring-1 ring-rose-300">Edit</a>
+                <form method="POST" action="{{ route('admin.enrollment.resubmit', $enrollment) }}" class="inline" onsubmit="return confirm('Resubmit for approval?');">@csrf
+                    <button type="submit" class="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Resubmit</button>
+                </form>
+            </div>
         </div>
     @endif
 </div>
@@ -176,38 +186,7 @@
     <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
         <div class="border-b border-slate-200 px-6 py-4"><h3 class="text-lg font-semibold text-slate-900">Uploaded Files & Documents</h3></div>
         <div class="px-6 py-4">
-            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                    <p class="mb-3 font-semibold text-blue-900">Policy Receipts</p>
-                    @if($enrollment->policyReceipts->isNotEmpty())
-                        <ul class="space-y-2">
-                            @foreach($enrollment->policyReceipts as $policyReceipt)
-                                <li class="rounded border border-slate-200 bg-white p-3 text-sm">
-                                    <div class="font-semibold text-slate-900">{{ $policyReceipt->policy_no ?: $na }}</div>
-                                    <div class="mt-1 text-xs text-slate-600">{{ optional($policyReceipt->receive_date)->format('d M Y') ?: $na }}</div>
-                                </li>
-                            @endforeach
-                        </ul>
-                    @else
-                        <p class="text-sm text-blue-700">No receipts uploaded.</p>
-                    @endif
-                </div>
-                <div class="rounded-lg border border-purple-200 bg-purple-50 p-4">
-                    <p class="mb-3 font-semibold text-purple-900">Doctor Documents</p>
-                    @if($enrollment->doctorDocuments->isNotEmpty())
-                        <ul class="space-y-2">
-                            @foreach($enrollment->doctorDocuments as $document)
-                                <li class="rounded border border-slate-200 bg-white p-3 text-sm">
-                                    <div class="font-semibold text-slate-900">{{ $document->document_title ?: $na }}</div>
-                                    <div class="mt-1 text-xs text-slate-600">{{ $document->document_type ?: $na }}</div>
-                                </li>
-                            @endforeach
-                        </ul>
-                    @else
-                        <p class="text-sm text-purple-700">No documents uploaded.</p>
-                    @endif
-                </div>
-            </div>
+            @include('admin.enrollment.partials.documents-summary', ['enrollment' => $enrollment, 'documentSummary' => $documentSummary ?? null])
         </div>
     </div>
 
@@ -261,24 +240,12 @@
     </div>
 </div>
 
-@if($status === 'approved' && !$bypassesApprovalWorkflow && !$editWorkflowUnlocked)
-    <div class="mt-8 rounded-lg border-l-4 border-l-slate-400 bg-slate-50 p-6">
-        <div>
-            <h3 class="mb-2 text-xl font-bold text-slate-900">Workflow locked</h3>
-            <p class="text-sm text-slate-700">Use <strong>Request edit access</strong> so an administrator can verify the OTP. Then you can continue to Step 2.</p>
-        </div>
-    </div>
-@elseif($status === 'approved')
-    <div class="mt-8 rounded-lg border-l-4 border-l-emerald-500 bg-emerald-50 p-6">
-        <div class="flex items-center justify-between">
-            <div>
-                <h3 class="mb-2 text-xl font-bold text-emerald-900">Ready to Proceed</h3>
-                <p class="text-sm text-emerald-800">This enrollment is approved. Continue to the next step.</p>
-            </div>
-            <a href="{{ route('admin.enrollment.step2', $enrollment) }}" class="rounded-lg bg-emerald-600 px-8 py-3 font-bold text-white shadow hover:bg-emerald-700">Proceed to Step 2</a>
-        </div>
-    </div>
-@endif
+@include('admin.enrollment.partials.workflow-continue-cta', [
+    'enrollment' => $enrollment,
+    'workflowContinueCta' => $workflowContinueCta ?? null,
+    'workflowLockedCta' => $workflowLockedCta ?? false,
+    'canResumeWorkflow' => false,
+])
 
 @push('scripts')
 <script>

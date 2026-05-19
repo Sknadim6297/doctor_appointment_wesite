@@ -15,7 +15,10 @@ use App\Services\AdminAccessService;
 use App\Services\ActivityLogService;
 use App\Services\DoctorDocumentService;
 use App\Services\EnrollmentEditAccessService;
+use App\Services\DashboardCacheService;
+use App\Services\EnrollmentRecordAccessService;
 use App\Services\LocationService;
+use App\Services\WorkflowNotificationService;
 use App\Support\EnrollmentWorkflow;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -28,7 +31,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EnrollmentController extends Controller
@@ -37,7 +40,9 @@ class EnrollmentController extends Controller
         private readonly ActivityLogService $activityLogService,
         private readonly AdminAccessService $adminAccessService,
         private readonly EnrollmentEditAccessService $enrollmentEditAccessService,
+        private readonly EnrollmentRecordAccessService $recordAccess,
         private readonly DoctorDocumentService $doctorDocumentService,
+        private readonly WorkflowNotificationService $workflowNotifications,
     )
     {
     }
@@ -60,7 +65,7 @@ class EnrollmentController extends Controller
         $dateFrom = request('date_from');
         $dateTo = request('date_to');
 
-        $query = $this->enrollmentListingQuery(Auth::user());
+        $query = $this->activeDoctorListingQuery(Auth::user());
         $this->applyEnrollmentListFilters($query, request(), false);
 
         $enrollments = $query->paginate(20)->appends(request()->query());
@@ -111,7 +116,17 @@ class EnrollmentController extends Controller
 
         $enrollments = $query->paginate(20)->appends(request()->query());
 
-        return view('admin.enrollment.my-enrollments', compact('enrollments'));
+        $ownedBase = $this->enrollmentListingQuery(Auth::user());
+        $employeeStats = [
+            'total' => (clone $ownedBase)->count(),
+            'draft' => (clone $ownedBase)->tap(fn ($q) => EnrollmentWorkflow::scopeNewEntries($q))->count(),
+            'pending' => (clone $ownedBase)->tap(fn ($q) => EnrollmentWorkflow::scopePendingAdminGate($q))->count(),
+            'approved' => (clone $ownedBase)->where('status', 'approved')->count(),
+            'rejected' => (clone $ownedBase)->tap(fn ($q) => EnrollmentWorkflow::scopeRejectedCases($q))->count(),
+            'incomplete' => (clone $ownedBase)->tap(fn ($q) => EnrollmentWorkflow::scopeIncompletePipeline($q))->count(),
+        ];
+
+        return view('admin.enrollment.my-enrollments', compact('enrollments', 'employeeStats'));
     }
 
     public function incompleteDocuments(Request $request)
@@ -159,7 +174,7 @@ class EnrollmentController extends Controller
         $searchMonth = $request->input('search_month');
         $searchYear = $request->input('search_year');
 
-        $query = $this->enrollmentListingQuery(Auth::user());
+        $query = $this->activeDoctorListingQuery(Auth::user());
         $this->applyEnrollmentListFilters($query, $request, false);
 
         $fileName = 'doctor-renewal-report-' . now()->format('Ymd-His') . '.csv';
@@ -261,13 +276,30 @@ class EnrollmentController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $this->validatedEnrollmentData($request);
-
-        $user = Auth::user();
-        $isSuperAdmin = $this->isSuperAdminUser($user);
-        $agentDetails = $this->currentUserAgentDetails($user);
         $workflowEnrollmentId = (int) $request->input('workflow_enrollment_id', 0);
         $workflowDraft = $workflowEnrollmentId > 0 ? Enrollment::find($workflowEnrollmentId) : null;
+
+        if ($workflowDraft) {
+            $this->authorizeEnrollmentAccess($workflowDraft);
+        }
+
+        $user = Auth::user();
+        $isAdminCreator = $this->isPrivilegedAdminUser($user);
+
+        if ($workflowDraft
+            && $workflowDraft->status === 'pending'
+            && $workflowDraft->submitted_at
+            && !EnrollmentWorkflow::isRejected($workflowDraft)
+            && !$isAdminCreator) {
+            return redirect()
+                ->route('admin.my-enrollments.show', $workflowDraft->id)
+                ->with('info', 'This enrollment was already submitted and is awaiting admin approval.');
+        }
+
+        $validated = $this->validatedEnrollmentData($request, $workflowDraft);
+
+        $isSuperAdmin = $this->isSuperAdminUser($user);
+        $agentDetails = $this->currentUserAgentDetails($user);
 
         $validated['bond_to_mail'] = isset($validated['bond_to_mail']) && $validated['bond_to_mail'] === 'Y';
         $validated['created_by'] = $user?->id;
@@ -275,16 +307,28 @@ class EnrollmentController extends Controller
         $validated['created_by_role'] = $this->resolveCreatorRole($user);
         $validated['agent_name'] = $agentDetails['name'];
         $validated['agent_phone_no'] = $agentDetails['phone'];
-        $validated['current_step'] = 2;
-        $validated['workflow_status'] = $isSuperAdmin ? EnrollmentWorkflow::IN_PROGRESS : EnrollmentWorkflow::PENDING_APPROVAL;
         $validated['is_step_incomplete'] = true;
         $validated['last_activity_at'] = now();
-        $validated['completed_steps'] = [1];
 
-        if ($isSuperAdmin) {
+        if ($isAdminCreator) {
             $validated['status'] = 'approved';
+            $validated['current_step'] = 2;
+            $validated['workflow_status'] = EnrollmentWorkflow::IN_PROGRESS;
+            $validated['completed_steps'] = [1];
             $validated['approved_by'] = $user?->id;
             $validated['approved_at'] = now();
+        } else {
+            $validated['status'] = 'pending';
+            $validated['current_step'] = 1;
+            $validated['workflow_status'] = EnrollmentWorkflow::PENDING_APPROVAL;
+            $validated['completed_steps'] = [];
+            $validated['approved_by'] = null;
+            $validated['approved_at'] = null;
+            $validated['submitted_at'] = now();
+            $validated['resubmitted_at'] = null;
+            $validated['held_at'] = null;
+            $validated['held_by'] = null;
+            $validated['hold_reason'] = null;
         }
 
         if (empty($validated['customer_id_no'])) {
@@ -307,41 +351,61 @@ class EnrollmentController extends Controller
         $enrollment = null;
         $validated['draft_data'] = $this->mergeWorkflowDraftData($workflowDraft?->draft_data, 'step1', $validated);
 
-        DB::transaction(function () use (&$enrollment, $validated, $workflowDraft, $user, $request, $isSuperAdmin): void {
+        DB::transaction(function () use (&$enrollment, $validated, $workflowDraft, $user, $request, $isSuperAdmin, $isAdminCreator): void {
             if ($workflowDraft) {
                 $workflowDraft->fill($validated);
                 $workflowDraft->save();
                 $enrollment = $workflowDraft;
             } else {
-                $enrollment = Enrollment::create(array_merge($validated, [
-                    'status' => $isSuperAdmin ? 'approved' : 'pending',
-                    'approved_by' => $isSuperAdmin ? $user?->id : null,
-                    'approved_at' => $isSuperAdmin ? now() : null,
-                ]));
+                $enrollment = Enrollment::create($validated);
             }
 
-            $this->doctorDocumentService->persistEnrollmentStep1Documents($request, $enrollment);
+            $this->persistStep1DocumentsOrFail($request, $enrollment);
+
+            $action = $isAdminCreator ? 'create-draft' : 'submitted';
+            $description = $isAdminCreator
+                ? 'Created or updated a workflow draft and moved it to the next step.'
+                : 'Submitted enrollment for admin approval.';
 
             $this->activityLogService->log(
                 $request,
                 'enrollment',
-                'create-draft',
+                $action,
                 $enrollment,
                 $user,
-                'Created or updated a workflow draft and moved it to the next step.',
+                $description,
                 [
                     'doctor_name' => $enrollment->doctor_name,
                     'membership_no' => $enrollment->customer_id_no,
                     'status' => $enrollment->status,
                     'workflow_status' => $enrollment->workflow_status,
                     'current_step' => $enrollment->current_step,
+                    'submitted_at' => $enrollment->submitted_at?->toIso8601String(),
                 ]
             );
         });
 
+        DashboardCacheService::bump(Auth::user(), !$isAdminCreator);
+
+        if ($isAdminCreator) {
+            return redirect()
+                ->route('admin.enrollment.step2', $enrollment)
+                ->with('success', 'Enrollment saved successfully. Continue with the workflow.');
+        }
+
+        $this->workflowNotifications->notifyAdmins(
+            'enrollment_submitted',
+            'New enrollment submitted',
+            ($enrollment->doctor_name ?: 'Enrollment') . ' is awaiting your approval.',
+            $enrollment,
+            Auth::user(),
+            route('admin.enrollment.details', $enrollment->id),
+            ['customer_id_no' => $enrollment->customer_id_no]
+        );
+
         return redirect()
-            ->route('admin.enrollment.step2', $enrollment)
-            ->with('success', $isSuperAdmin ? 'Enrollment saved successfully.' : 'Enrollment draft saved. Continue with the workflow from the same step.');
+            ->route('admin.my-enrollments.show', $enrollment->id)
+            ->with('success', 'Enrollment submitted for admin approval. You can continue Steps 2–4 after approval.');
     }
 
     /**
@@ -402,6 +466,7 @@ class EnrollmentController extends Controller
             'isSuperAdmin' => $this->isSuperAdminUser(Auth::user()),
             'existingDocuments' => $enrollment->doctorDocuments,
             'documentCategoryLabels' => \App\Support\DoctorDocumentCatalog::categoryLabels(),
+            'isAdminManagedEnrollment' => $enrollment->isAdminManaged(),
         ]);
     }
 
@@ -426,14 +491,13 @@ class EnrollmentController extends Controller
         $validated = $this->validatedEnrollmentData($request, $enrollment);
         $validated['bond_to_mail'] = isset($validated['bond_to_mail']) && $validated['bond_to_mail'] === 'Y';
 
-        $protectedEdit = !$this->isSuperAdminUser(Auth::user())
-            && $this->enrollmentEditAccessService->requiresOtpGuard($enrollment);
+        $protectedEdit = $this->enrollmentEditAccessService->requiresOtpGuardForUser($enrollment, Auth::user());
 
         $before = $enrollment->only(array_keys($validated));
 
         $enrollment->update($validated);
 
-        $this->doctorDocumentService->persistEnrollmentStep1Documents($request, $enrollment);
+        $this->persistStep1DocumentsOrFail($request, $enrollment);
 
         $metadata = [
             'doctor_name' => $enrollment->doctor_name,
@@ -478,6 +542,21 @@ class EnrollmentController extends Controller
             'approval_remarks' => 'nullable|string|max:2000',
         ]);
 
+        $this->doctorDocumentService->syncMissingWorkflowDocuments($enrollment);
+        $missingDocuments = $this->doctorDocumentService->missingRequiredEnrollmentDocuments($enrollment);
+
+        if ($missingDocuments !== []) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'Cannot approve: upload required documents first — ' . implode(', ', $missingDocuments) . '.');
+        }
+
+        $completedSteps = array_values(array_unique(array_merge(
+            (array) ($enrollment->completed_steps ?? []),
+            [1]
+        )));
+
         $enrollment->forceFill([
             'status' => 'approved',
             'approved_by' => Auth::id(),
@@ -485,7 +564,13 @@ class EnrollmentController extends Controller
             'approval_remarks' => $validated['approval_remarks'] ?? null,
             'rejection_reason' => null,
             'workflow_status' => EnrollmentWorkflow::IN_PROGRESS,
+            'current_step' => max(2, (int) ($enrollment->current_step ?? 1)),
+            'is_step_incomplete' => true,
+            'completed_steps' => $completedSteps,
             'last_activity_at' => now(),
+            'held_at' => null,
+            'held_by' => null,
+            'hold_reason' => null,
         ])->save();
 
         $this->activityLogService->log(
@@ -502,7 +587,20 @@ class EnrollmentController extends Controller
             ]
         );
 
-        return redirect()->route('admin.enrollment.pending')->with('success', 'Enrollment approved.');
+        DashboardCacheService::bump(Auth::user(), true);
+
+        $this->workflowNotifications->notifyEnrollmentOwner(
+            $enrollment,
+            'enrollment_approved',
+            'Enrollment approved',
+            'Your enrollment for ' . ($enrollment->doctor_name ?: 'the doctor') . ' was approved. Step 2 is now unlocked.',
+            Auth::user(),
+            route('admin.enrollment.resume', $enrollment),
+        );
+
+        return redirect()
+            ->route('admin.enrollment.details', $enrollment->id)
+            ->with('success', 'Enrollment approved. The employee who submitted this application can now continue Steps 2–4 (policy receipt and post submission).');
     }
 
     /**
@@ -511,17 +609,25 @@ class EnrollmentController extends Controller
     public function reject(Request $request, $id)
     {
         $validated = $request->validate([
-            'rejection_reason' => 'nullable|string|max:2000',
+            'rejection_reason' => 'required|string|min:3|max:2000',
             'approval_remarks' => 'nullable|string|max:2000',
         ]);
 
         $enrollment = Enrollment::findOrFail($id);
+
+        if (EnrollmentWorkflow::isOnHold($enrollment)) {
+            return redirect()->back()->with('error', 'Release this enrollment from hold before rejecting.');
+        }
+
         $enrollment->forceFill([
             'status' => 'rejected',
-            'rejection_reason' => $validated['rejection_reason'] ?? null,
+            'rejection_reason' => $validated['rejection_reason'],
             'approval_remarks' => $validated['approval_remarks'] ?? null,
             'workflow_status' => EnrollmentWorkflow::REJECTED,
             'last_activity_at' => now(),
+            'held_at' => null,
+            'held_by' => null,
+            'hold_reason' => null,
         ])->save();
 
         $this->activityLogService->log(
@@ -537,6 +643,18 @@ class EnrollmentController extends Controller
                 'doctor_name' => $enrollment->doctor_name,
                 'membership_no' => $enrollment->customer_id_no,
             ]
+        );
+
+        DashboardCacheService::bump(Auth::user(), true);
+
+        $this->workflowNotifications->notifyEnrollmentOwner(
+            $enrollment,
+            'enrollment_rejected',
+            'Enrollment rejected',
+            'Reason: ' . ($validated['rejection_reason'] ?? 'Not specified'),
+            Auth::user(),
+            route('admin.my-enrollments.show', $enrollment->id),
+            ['rejection_reason' => $validated['rejection_reason'] ?? null]
         );
 
         return redirect()->route('admin.enrollment.pending')->with('success', 'Enrollment rejected.');
@@ -572,6 +690,133 @@ class EnrollmentController extends Controller
         return redirect()->route('admin.enrollment.pending')->with('success', 'Enrollment sent back for correction.');
     }
 
+    public function hold(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'hold_reason' => 'required|string|min:3|max:2000',
+        ]);
+
+        $enrollment = Enrollment::findOrFail($id);
+
+        if ($enrollment->status === 'approved') {
+            return redirect()->back()->with('error', 'Cannot place an approved enrollment on hold.');
+        }
+
+        $enrollment->forceFill([
+            'workflow_status' => EnrollmentWorkflow::HOLD,
+            'hold_reason' => $validated['hold_reason'],
+            'held_at' => now(),
+            'held_by' => Auth::id(),
+            'last_activity_at' => now(),
+        ])->save();
+
+        $this->activityLogService->log(
+            $request,
+            'enrollment',
+            'hold',
+            $enrollment,
+            Auth::user(),
+            'Placed enrollment on hold.',
+            ['hold_reason' => $validated['hold_reason'], 'doctor_name' => $enrollment->doctor_name]
+        );
+
+        return redirect()
+            ->route('admin.enrollment.details', $enrollment->id)
+            ->with('success', 'Enrollment placed on hold.');
+    }
+
+    public function releaseHold(Request $request, $id)
+    {
+        $enrollment = Enrollment::findOrFail($id);
+
+        if (!EnrollmentWorkflow::isOnHold($enrollment)) {
+            return redirect()->back()->with('info', 'This enrollment is not on hold.');
+        }
+
+        $restoreWorkflow = $enrollment->resubmitted_at
+            ? EnrollmentWorkflow::RESUBMITTED
+            : EnrollmentWorkflow::PENDING_APPROVAL;
+
+        $enrollment->forceFill([
+            'workflow_status' => $restoreWorkflow,
+            'hold_reason' => null,
+            'held_at' => null,
+            'held_by' => null,
+            'last_activity_at' => now(),
+        ])->save();
+
+        $this->activityLogService->log(
+            $request,
+            'enrollment',
+            'release_hold',
+            $enrollment,
+            Auth::user(),
+            'Released enrollment from hold.',
+            ['doctor_name' => $enrollment->doctor_name]
+        );
+
+        return redirect()
+            ->route('admin.enrollment.details', $enrollment->id)
+            ->with('success', 'Hold released. Enrollment returned to the approval queue.');
+    }
+
+    /**
+     * Employee resubmits after rejection (re-queues for admin approval).
+     */
+    public function resubmit(Request $request, Enrollment $enrollment)
+    {
+        $this->authorizeEnrollmentAccess($enrollment);
+
+        $user = Auth::user();
+        if ((int) ($enrollment->created_by ?? 0) !== (int) ($user?->id ?? 0)) {
+            abort(403, 'Only the submitting employee can resubmit this enrollment.');
+        }
+
+        if ($enrollment->status !== 'rejected' && EnrollmentWorkflow::normalize($enrollment->workflow_status) !== EnrollmentWorkflow::REJECTED) {
+            return redirect()
+                ->route('admin.my-enrollments.show', $enrollment->id)
+                ->with('error', 'Only rejected enrollments can be resubmitted.');
+        }
+
+        $enrollment->forceFill([
+            'status' => 'pending',
+            'workflow_status' => EnrollmentWorkflow::PENDING_APPROVAL,
+            'resubmitted_at' => now(),
+            'last_activity_at' => now(),
+            'held_at' => null,
+            'held_by' => null,
+            'hold_reason' => null,
+        ])->save();
+
+        $this->activityLogService->log(
+            $request,
+            'enrollment',
+            'resubmit',
+            $enrollment,
+            $user,
+            'Employee resubmitted enrollment after rejection.',
+            [
+                'doctor_name' => $enrollment->doctor_name,
+                'prior_rejection_reason' => $enrollment->rejection_reason,
+            ]
+        );
+
+        DashboardCacheService::bump($user, true);
+
+        $this->workflowNotifications->notifyAdmins(
+            'enrollment_resubmitted',
+            'Enrollment resubmitted',
+            ($enrollment->doctor_name ?: 'Enrollment') . ' was resubmitted after rejection.',
+            $enrollment,
+            $user,
+            route('admin.enrollment.details', $enrollment->id),
+        );
+
+        return redirect()
+            ->route('admin.my-enrollments.show', $enrollment->id)
+            ->with('success', 'Enrollment resubmitted for admin approval. Steps 2–4 remain locked until approved.');
+    }
+
     /**
      * Enrollment monitoring workspace (CRM-style buckets).
      */
@@ -586,7 +831,7 @@ class EnrollmentController extends Controller
         );
 
         $bucket = $bucket ?: 'overview';
-        $allowed = ['overview', 'new_entries', 'pending_approvals', 'incomplete', 'completed', 'rejected', 'returned'];
+        $allowed = ['overview', 'new_entries', 'pending_approvals', 'incomplete', 'completed', 'rejected', 'returned', 'hold', 'resubmitted'];
 
         if (!in_array($bucket, $allowed, true)) {
             $bucket = 'overview';
@@ -597,9 +842,11 @@ class EnrollmentController extends Controller
             'new_entries' => (clone $base)->tap(fn ($q) => EnrollmentWorkflow::scopeNewEntries($q))->count(),
             'pending_approvals' => (clone $base)->tap(fn ($q) => EnrollmentWorkflow::scopePendingAdminGate($q))->count(),
             'incomplete' => (clone $base)->tap(fn ($q) => EnrollmentWorkflow::scopeIncompletePipeline($q))->count(),
-            'completed' => (clone $base)->productionReady()->count(),
+            'completed' => (clone $base)->tap(fn ($q) => EnrollmentWorkflow::scopeCompletedPipeline($q))->count(),
             'rejected' => (clone $base)->tap(fn ($q) => EnrollmentWorkflow::scopeRejectedCases($q))->count(),
             'returned' => (clone $base)->tap(fn ($q) => EnrollmentWorkflow::scopeReturnedForCorrection($q))->count(),
+            'hold' => (clone $base)->tap(fn ($q) => EnrollmentWorkflow::scopeOnHold($q))->count(),
+            'resubmitted' => (clone $base)->tap(fn ($q) => EnrollmentWorkflow::scopeResubmitted($q))->count(),
         ];
 
         $query = $this->enrollmentMonitoringQuery(Auth::user());
@@ -608,17 +855,15 @@ class EnrollmentController extends Controller
             'new_entries' => EnrollmentWorkflow::scopeNewEntries($query),
             'pending_approvals' => EnrollmentWorkflow::scopePendingAdminGate($query),
             'incomplete' => EnrollmentWorkflow::scopeIncompletePipeline($query),
-            'completed' => $query->productionReady(),
+            'completed' => EnrollmentWorkflow::scopeCompletedPipeline($query),
             'rejected' => EnrollmentWorkflow::scopeRejectedCases($query),
             'returned' => EnrollmentWorkflow::scopeReturnedForCorrection($query),
-            default => null,
+            'hold' => EnrollmentWorkflow::scopeOnHold($query),
+            'resubmitted' => EnrollmentWorkflow::scopeResubmitted($query),
+            default => $query->enrollmentPipeline(),
         };
 
         $this->applyEnrollmentListFilters($query, $request, false);
-
-        if ($bucket === 'pending_approvals' && trim((string) $request->input('status', '')) === '') {
-            $query->where('status', 'pending');
-        }
 
         $enrollments = $query->paginate(25)->appends($request->query());
 
@@ -663,11 +908,17 @@ class EnrollmentController extends Controller
         EnrollmentWorkflow::scopePendingAdminGate($query);
         $this->applyEnrollmentListFilters($query, request(), false);
 
-        if (trim((string) request('status', '')) === '') {
-            $query->where('status', 'pending');
-        }
+        $enrollments = $query->with(['specialization'])->paginate(25)->appends(request()->query());
 
-        $enrollments = $query->paginate(25)->appends(request()->query());
+        $documentReadiness = [];
+        foreach ($enrollments as $enrollment) {
+            $this->doctorDocumentService->syncMissingWorkflowDocuments($enrollment);
+            $missing = $this->doctorDocumentService->missingRequiredEnrollmentDocuments($enrollment);
+            $documentReadiness[$enrollment->id] = [
+                'missing' => $missing,
+                'ready' => $missing === [],
+            ];
+        }
 
         $employees = User::query()
             ->where('role', '!=', 'super_admin')
@@ -690,7 +941,23 @@ class EnrollmentController extends Controller
 
         $canEdit = $isSuperAdmin || $isAdmin || $this->adminAccessService->hasPrivilege($currentUser, 'enrollment', 'edit');
 
-        return view('admin.enrollment.pending', compact('enrollments', 'employees', 'canApprove', 'canReject', 'canReturn', 'canEdit', 'isSuperAdmin', 'isAdmin'));
+        $pendingGateCount = (clone $this->enrollmentMonitoringQuery(Auth::user()))
+            ->tap(fn ($q) => EnrollmentWorkflow::scopePendingAdminGate($q))
+            ->where('status', 'pending')
+            ->count();
+
+        return view('admin.enrollment.pending', compact(
+            'enrollments',
+            'employees',
+            'canApprove',
+            'canReject',
+            'canReturn',
+            'canEdit',
+            'isSuperAdmin',
+            'isAdmin',
+            'documentReadiness',
+            'pendingGateCount',
+        ));
     }
 
     /**
@@ -713,6 +980,9 @@ class EnrollmentController extends Controller
         $this->authorizeEnrollmentAccess($enrollment);
 
         $this->doctorDocumentService->syncMissingWorkflowDocuments($enrollment);
+        $this->doctorDocumentService->promoteToActiveDoctorIfEligible($enrollment);
+        $enrollment->refresh();
+        $documentSummary = $this->doctorDocumentService->enrollmentDocumentsSummary($enrollment);
 
         $activityTimeline = AdminActivityLog::query()
             ->with(['actor:id,name,email,role', 'owner:id,name,email,role'])
@@ -732,23 +1002,33 @@ class EnrollmentController extends Controller
         $isSuperAdmin = $this->isSuperAdminUser($currentUser);
         $isPrivilegedAdmin = $this->isPrivilegedAdminUser($currentUser);
         $wf = $enrollment->normalizedWorkflowStatus();
-        $atApprovalGate = $enrollment->status === 'pending'
+        $isOnHold = EnrollmentWorkflow::isOnHold($enrollment);
+        $atApprovalGate = !$isOnHold
+            && $enrollment->status === 'pending'
+            && $wf !== EnrollmentWorkflow::DRAFT
             && $wf !== EnrollmentWorkflow::RETURNED_FOR_CORRECTION
+            && $wf !== EnrollmentWorkflow::REJECTED
             && (
-                in_array($wf, EnrollmentWorkflow::gateStatuses(), true)
-                || ($wf === EnrollmentWorkflow::IN_PROGRESS && (int) ($enrollment->current_step ?? 1) >= 2)
+                $enrollment->submitted_at !== null
+                || in_array($wf, EnrollmentWorkflow::gateStatuses(), true)
             );
-        $canShowApprovalPanel = !$isSuperAdmin && $isPrivilegedAdmin && $atApprovalGate;
+        $canShowApprovalPanel = $isPrivilegedAdmin && $atApprovalGate;
+        $canHoldEnrollment = $isPrivilegedAdmin && $atApprovalGate;
+        $canReleaseHold = $isPrivilegedAdmin && $isOnHold;
         $canReturnForCorrection = $canShowApprovalPanel;
         $editAccessState = $this->enrollmentEditAccessService->viewState($enrollment, $currentUser);
-        $editPathLocked = ($editAccessState['locked'] ?? false) && !($editAccessState['session_active'] ?? false);
-        $canResumeWorkflow = !$this->shouldForceReadOnly($enrollment)
-            && $this->adminAccessService->hasPrivilege($currentUser, 'enrollment', 'edit')
-            && !$editPathLocked;
         $bypassesApprovalWorkflow = $this->bypassesEnrollmentApprovalWorkflow($enrollment, $currentUser);
-        $canProceedToStep2 = ($bypassesApprovalWorkflow || $enrollment->status === 'approved')
-            && ((Auth::id() === (int) $enrollment->created_by) || $isPrivilegedAdmin || $isSuperAdmin)
-            && ($bypassesApprovalWorkflow || !$editPathLocked);
+        $canContinueWorkflow = $this->enrollmentEditAccessService->canUserContinueWorkflow($currentUser, $enrollment);
+        $canResumeWorkflow = (EnrollmentWorkflow::canContinueDraftEntry($enrollment) || (
+            $enrollment->status === 'approved'
+            && !$this->shouldForceReadOnly($enrollment)
+            && $wf !== EnrollmentWorkflow::COMPLETED
+        ))
+            && $this->adminAccessService->hasPrivilege($currentUser, 'enrollment', 'edit')
+            && ($canContinueWorkflow || EnrollmentWorkflow::canContinueDraftEntry($enrollment));
+        $workflowContinueCta = $this->buildWorkflowContinueCta($enrollment, $currentUser);
+        $workflowLockedCta = ($enrollment->status === 'approved' && !$bypassesApprovalWorkflow && !$canContinueWorkflow)
+            && ((Auth::id() === (int) $enrollment->created_by) || $isPrivilegedAdmin || $isSuperAdmin);
 
         return view('admin.enrollment.details', compact(
             'enrollment',
@@ -757,12 +1037,17 @@ class EnrollmentController extends Controller
             'workflowSteps',
             'canShowApprovalPanel',
             'canReturnForCorrection',
+            'canHoldEnrollment',
+            'canReleaseHold',
+            'isOnHold',
             'canResumeWorkflow',
             'isPrivilegedAdmin',
             'isSuperAdmin',
             'bypassesApprovalWorkflow',
-            'canProceedToStep2',
-            'editAccessState'
+            'workflowContinueCta',
+            'workflowLockedCta',
+            'editAccessState',
+            'documentSummary',
         ));
     }
 
@@ -774,6 +1059,11 @@ class EnrollmentController extends Controller
 
         $this->authorizeEnrollmentAccess($enrollment);
 
+        $this->doctorDocumentService->syncMissingWorkflowDocuments($enrollment);
+        $this->doctorDocumentService->promoteToActiveDoctorIfEligible($enrollment);
+        $enrollment->refresh();
+        $documentSummary = $this->doctorDocumentService->enrollmentDocumentsSummary($enrollment);
+
         $latestActivity = AdminActivityLog::query()
             ->with(['actor:id,name,email', 'owner:id,name,email'])
             ->where('subject_type', Enrollment::class)
@@ -782,8 +1072,22 @@ class EnrollmentController extends Controller
             ->first();
 
         $editAccessState = $this->enrollmentEditAccessService->viewState($enrollment, Auth::user());
+        $currentUser = Auth::user();
+        $workflowContinueCta = $this->buildWorkflowContinueCta($enrollment, $currentUser);
+        $bypassesApprovalWorkflow = $this->bypassesEnrollmentApprovalWorkflow($enrollment, $currentUser);
+        $canContinueWorkflow = $this->enrollmentEditAccessService->canUserContinueWorkflow($currentUser, $enrollment);
+        $workflowLockedCta = ($enrollment->status === 'approved' && !$bypassesApprovalWorkflow && !$canContinueWorkflow)
+            && (int) ($enrollment->created_by ?? 0) === (int) ($currentUser?->id ?? 0);
 
-        return view('admin.enrollment.my-enrollment-details', compact('enrollment', 'latestActivity', 'editAccessState'));
+        return view('admin.enrollment.my-enrollment-details', compact(
+            'enrollment',
+            'latestActivity',
+            'editAccessState',
+            'documentSummary',
+            'workflowContinueCta',
+            'workflowLockedCta',
+            'bypassesApprovalWorkflow',
+        ));
     }
 
     public function myEnrollmentPdf($id)
@@ -843,7 +1147,8 @@ class EnrollmentController extends Controller
             'doctor_email', 'dob', 'qualification', 'qualification_names', 'qualification_years', 'qualification_year',
             'medical_registration_no', 'year_of_reg', 'clinic_address', 'aadhar_card_no', 'pan_card_no',
             'specialization_id', 'payment_mode', 'plan', 'plan_name', 'coverage_id', 'coverage', 'service_amount',
-            'payment_amount', 'total_amount', 'bond_to_mail',
+            'payment_amount', 'total_amount', 'payment_method', 'payment_cheque', 'payment_bank_name',
+            'payment_branch_name', 'payment_upi_transaction_id', 'payment_cash_date', 'bond_to_mail',
         ];
 
         $step3Keys = ['policy_no', 'last_renewed_date', 'policy_start_date', 'policy_end_date', 'rcv_date'];
@@ -857,7 +1162,7 @@ class EnrollmentController extends Controller
 
         $payload = Arr::only($request->all(), $keys);
 
-        foreach (['dob', 'last_renewed_date', 'policy_start_date', 'policy_end_date', 'rcv_date', 'post_doc_date', 'post_doc_recieved_date'] as $dateKey) {
+        foreach (['dob', 'last_renewed_date', 'policy_start_date', 'policy_end_date', 'rcv_date', 'post_doc_date', 'post_doc_recieved_date', 'payment_cash_date'] as $dateKey) {
             if (array_key_exists($dateKey, $payload)) {
                 $payload[$dateKey] = $this->normalizeWorkflowDate($payload[$dateKey]);
             }
@@ -865,6 +1170,10 @@ class EnrollmentController extends Controller
 
         $payload = $this->mergeQualificationFields($request, $payload);
         $payload['bond_to_mail'] = isset($payload['bond_to_mail']) && $payload['bond_to_mail'] === 'Y';
+
+        if (array_key_exists('doctor_email', $payload)) {
+            $payload['doctor_email'] = $this->normalizeDoctorEmail($payload['doctor_email']);
+        }
 
         return $payload;
     }
@@ -900,9 +1209,97 @@ class EnrollmentController extends Controller
         return $draftData;
     }
 
+    /**
+     * @return \Illuminate\Support\Collection<int, \App\Models\PolicyReceipt>
+     */
+    private function distinctPolicyReceiptsForEnrollment(Enrollment $enrollment)
+    {
+        return \App\Models\PolicyReceipt::query()
+            ->where('enrollment_id', $enrollment->id)
+            ->orderByDesc('id')
+            ->get()
+            ->unique(fn (\App\Models\PolicyReceipt $receipt) => filled($receipt->policy_no)
+                ? 'policy:' . $receipt->policy_no
+                : 'id:' . $receipt->id)
+            ->values();
+    }
+
+    /**
+     * @return array{title: string, description: string, button_label: string, url: string, tone: string, step: int}|null
+     */
+    private function buildWorkflowContinueCta(Enrollment $enrollment, ?User $user): ?array
+    {
+        if ($enrollment->isProductionActive()) {
+            return [
+                'title' => 'Enrollment complete',
+                'description' => 'This doctor is on the active list with verified documents.',
+                'button_label' => 'View doctor profile',
+                'url' => route('admin.doctors.show', $enrollment->id),
+                'tone' => 'emerald',
+                'step' => 4,
+            ];
+        }
+
+        $bypass = $this->bypassesEnrollmentApprovalWorkflow($enrollment, $user);
+
+        if ($enrollment->status !== 'approved' && !$bypass) {
+            return null;
+        }
+
+        $isOwner = $user && (int) ($enrollment->created_by ?? 0) === (int) $user->id;
+        $canOpen = $bypass
+            || $this->isPrivilegedAdminUser($user)
+            || $this->isSuperAdminUser($user)
+            || $isOwner
+            || $this->enrollmentEditAccessService->canUserContinueWorkflow($user, $enrollment);
+
+        if (!$canOpen) {
+            return null;
+        }
+
+        $step = max(1, min(4, (int) ($enrollment->current_step ?? 1)));
+        if ($enrollment->status === 'approved' && $step < 2) {
+            $step = 2;
+        }
+
+        $stepMeta = [
+            1 => ['label' => 'Enrollment Details', 'button' => 'Edit Step 1', 'route' => route('admin.enrollment.edit', $enrollment->id)],
+            2 => ['label' => 'Preview', 'button' => 'Open Step 2', 'route' => route('admin.enrollment.step2', $enrollment)],
+            3 => ['label' => 'Policy Received', 'button' => 'Open Step 3', 'route' => route('admin.enrollment.step3', $enrollment)],
+            4 => ['label' => 'Post Submission', 'button' => 'Open Step 4', 'route' => route('admin.enrollment.step4', $enrollment)],
+        ];
+
+        $meta = $stepMeta[$step];
+        $wf = $enrollment->normalizedWorkflowStatus();
+
+        if ($step >= 4 && $wf === EnrollmentWorkflow::COMPLETED) {
+            return [
+                'title' => 'Awaiting document verification',
+                'description' => 'Step 4 is done. Required documents (Aadhaar, PAN, medical registration) must be verified before this doctor appears on the active list.',
+                'button_label' => 'Review Step 4',
+                'url' => route('admin.enrollment.step4', $enrollment),
+                'tone' => 'amber',
+                'step' => 4,
+            ];
+        }
+
+        return [
+            'title' => 'Continue workflow',
+            'description' => "Step {$step} of 4 — {$meta['label']}. Open this step to continue the enrollment.",
+            'button_label' => $meta['button'],
+            'url' => $meta['route'],
+            'tone' => 'blue',
+            'step' => $step,
+        ];
+    }
+
     private function workflowResumeUrl(Enrollment $enrollment): string
     {
         $step = max(1, (int) ($enrollment->current_step ?: 1));
+
+        if ($enrollment->status === 'approved' && $step < 2) {
+            $step = 2;
+        }
 
         return match ($step) {
             1 => route('admin.enrollment.edit', $enrollment->id),
@@ -913,12 +1310,17 @@ class EnrollmentController extends Controller
         };
     }
 
-    private function markWorkflowStep(Enrollment $enrollment, int $step, string $workflowStatus, array $completedSteps): void
-    {
+    private function markWorkflowStep(
+        Enrollment $enrollment,
+        int $step,
+        string $workflowStatus,
+        array $completedSteps,
+        bool $isIncomplete = true
+    ): void {
         $enrollment->forceFill([
-            'current_step' => $step,
+            'current_step' => max($step, (int) ($enrollment->current_step ?? 1)),
             'workflow_status' => $workflowStatus,
-            'is_step_incomplete' => true,
+            'is_step_incomplete' => $isIncomplete,
             'last_activity_at' => now(),
             'completed_steps' => array_values(array_unique($completedSteps)),
         ])->save();
@@ -938,6 +1340,18 @@ class EnrollmentController extends Controller
     }
 
     public function autosave(Request $request): JsonResponse
+    {
+        try {
+            return $this->performAutosave($request);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?? 'Could not save draft.',
+            ], 422);
+        }
+    }
+
+    private function performAutosave(Request $request): JsonResponse
     {
         $step = max(1, (int) $request->input('workflow_step', 1));
         $enrollmentId = (int) $request->input('workflow_enrollment_id', 0);
@@ -968,7 +1382,7 @@ class EnrollmentController extends Controller
                 $enrollment = Enrollment::create([
                     'customer_id_no' => $payload['customer_id_no'] ?? $this->generateCustomerId(),
                     'money_rc_no' => $payload['money_rc_no'] ?? null,
-                    'doctor_name' => $payload['doctor_name'] ?? null,
+                    'doctor_name' => $this->resolveAutosaveDoctorName($payload['doctor_name'] ?? null),
                     'doctor_address' => $payload['doctor_address'] ?? null,
                     'country' => $payload['country'] ?? null,
                     'country_name' => $payload['country_name'] ?? null,
@@ -1016,11 +1430,13 @@ class EnrollmentController extends Controller
             $draftData = $enrollment->draft_data ?? [];
             $draftData = $this->mergeWorkflowDraftData($draftData, 'step' . $step, $payload);
 
+            $currentStep = max((int) ($enrollment->current_step ?? 1), $step);
+
             $enrollment->fill([
                 'workflow_status' => $isSuperAdmin
                     ? EnrollmentWorkflow::IN_PROGRESS
                     : ($step === 1 ? EnrollmentWorkflow::DRAFT : EnrollmentWorkflow::IN_PROGRESS),
-                'current_step' => $step,
+                'current_step' => $currentStep,
                 'is_step_incomplete' => true,
                 'last_activity_at' => now(),
                 'draft_data' => $draftData,
@@ -1035,18 +1451,28 @@ class EnrollmentController extends Controller
             }
 
             if ($step === 1) {
-                $enrollment->fill(Arr::only($payload, [
+                $stepPayload = $this->payloadForAutosaveFill($payload, [
                     'customer_id_no', 'money_rc_no', 'doctor_name', 'doctor_address', 'country', 'country_name',
                     'state', 'state_name', 'city', 'city_name', 'postcode', 'mobile1', 'mobile2', 'doctor_email',
                     'dob', 'qualification', 'qualification_year', 'medical_registration_no', 'year_of_reg',
                     'clinic_address', 'aadhar_card_no', 'pan_card_no', 'specialization_id', 'payment_mode', 'plan',
                     'plan_name', 'coverage_id', 'coverage', 'service_amount', 'payment_amount', 'total_amount',
-                    'bond_to_mail',
-                ]));
+                    'payment_method', 'payment_cheque', 'payment_bank_name', 'payment_branch_name',
+                    'payment_upi_transaction_id', 'payment_cash_date', 'bond_to_mail',
+                ]);
+
+                if (array_key_exists('doctor_name', $stepPayload)) {
+                    $stepPayload['doctor_name'] = $this->resolveAutosaveDoctorName($stepPayload['doctor_name']);
+                }
+
+                $enrollment->fill($stepPayload);
             }
 
             $enrollment->save();
 
+            if ($step === 1 && $this->doctorDocumentService->requestHasEnrollmentStep1Files($request)) {
+                $this->persistStep1DocumentsOrFail($request, $enrollment);
+            }
         });
 
         return response()->json([
@@ -1062,15 +1488,30 @@ class EnrollmentController extends Controller
     public function resume(Enrollment $enrollment)
     {
         $this->authorizeEnrollmentAccess($enrollment);
+        $enrollment->refresh();
 
         if ($this->isSuperAdminUser(Auth::user())) {
             return redirect()->to($this->workflowResumeUrl($enrollment));
+        }
+
+        if (EnrollmentWorkflow::canContinueDraftEntry($enrollment)) {
+            if ($redirect = $this->enrollmentEditAccessService->assertMayPerformEdit(request(), $enrollment, Auth::user())) {
+                return $redirect;
+            }
+
+            return redirect()->route('admin.enrollment.edit', $enrollment->id);
         }
 
         if ($this->shouldForceReadOnly($enrollment)) {
             return redirect()
                 ->route('admin.enrollment.details', $enrollment)
                 ->with('info', 'This enrollment is pending approval and is available in read-only mode.');
+        }
+
+        if ($enrollment->status !== 'approved') {
+            return redirect()
+                ->route('admin.enrollment.details', $enrollment)
+                ->with('info', 'This enrollment must be approved before continuing to Steps 2–4.');
         }
 
         if ($redirect = $this->enrollmentEditAccessService->assertMayPerformEdit(request(), $enrollment, Auth::user())) {
@@ -1117,6 +1558,40 @@ class EnrollmentController extends Controller
             'enrollment' => $enrollment,
             'workflowSteps' => $this->buildWorkflowSteps($enrollment),
         ]);
+    }
+
+    public function continueFromStepTwo(Request $request, Enrollment $enrollment)
+    {
+        $this->authorizeEnrollmentAccess($enrollment);
+
+        if ($redirect = $this->ensureEnrollmentStepsUnlocked($enrollment)) {
+            return $redirect;
+        }
+
+        if ($this->shouldForceReadOnly($enrollment)) {
+            return redirect()
+                ->route('admin.enrollment.details', $enrollment)
+                ->with('info', 'This enrollment is pending approval and is available in read-only mode.');
+        }
+
+        if ($redirect = $this->enrollmentEditAccessService->assertMayPerformEdit($request, $enrollment, Auth::user())) {
+            return $redirect;
+        }
+
+        if ((int) ($enrollment->current_step ?? 1) < 2) {
+            return redirect()->route('admin.enrollment.resume', $enrollment);
+        }
+
+        if ((int) ($enrollment->current_step ?? 1) < 3) {
+            $this->markWorkflowStep(
+                $enrollment,
+                3,
+                $enrollment->workflow_status ?: EnrollmentWorkflow::IN_PROGRESS,
+                [1, 2]
+            );
+        }
+
+        return redirect()->route('admin.enrollment.step3', $enrollment);
     }
 
     public function downloadStepTwoPdf(Enrollment $enrollment)
@@ -1274,12 +1749,16 @@ class EnrollmentController extends Controller
             return $redirect;
         }
 
+        if ((int) ($enrollment->current_step ?? 1) >= 4 && !$this->isSuperAdminUser(Auth::user())) {
+            return redirect()
+                ->route('admin.enrollment.step4', $enrollment)
+                ->with('info', 'Policy receipt step is already complete. Continue with post submission.');
+        }
+
         if ($this->isSuperAdminUser(Auth::user())) {
             $this->markWorkflowStep($enrollment, 3, $enrollment->workflow_status ?: EnrollmentWorkflow::IN_PROGRESS, [1, 2]);
 
-            $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
-                ->orderByDesc('id')
-                ->get();
+            $policyReceipts = $this->distinctPolicyReceiptsForEnrollment($enrollment);
 
             return view('admin.enrollment.step3', [
                 'enrollment' => $enrollment,
@@ -1299,15 +1778,17 @@ class EnrollmentController extends Controller
             return $redirect;
         }
 
-        if ((int) ($enrollment->current_step ?? 1) < 3 && !$this->isSuperAdminUser(Auth::user())) {
+        $currentStep = (int) ($enrollment->current_step ?? 1);
+
+        if ($currentStep < 2 && !$this->isSuperAdminUser(Auth::user())) {
             return redirect()->route('admin.enrollment.resume', $enrollment);
         }
 
-        $this->markWorkflowStep($enrollment, 3, $enrollment->workflow_status ?: 'in_progress', [1, 2]);
+        if ($currentStep < 3) {
+            $this->markWorkflowStep($enrollment, 3, $enrollment->workflow_status ?: EnrollmentWorkflow::IN_PROGRESS, [1, 2]);
+        }
 
-        $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
-            ->orderByDesc('id')
-            ->get();
+        $policyReceipts = $this->distinctPolicyReceiptsForEnrollment($enrollment);
 
         return view('admin.enrollment.step3', [
             'enrollment' => $enrollment,
@@ -1350,11 +1831,15 @@ class EnrollmentController extends Controller
             return $redirect;
         }
 
-        if ((int) ($enrollment->current_step ?? 1) < 4 && !$this->isSuperAdminUser(Auth::user())) {
+        $currentStep = (int) ($enrollment->current_step ?? 1);
+
+        if ($currentStep < 3 && !$this->isSuperAdminUser(Auth::user())) {
             return redirect()->route('admin.enrollment.resume', $enrollment);
         }
 
-        $this->markWorkflowStep($enrollment, 4, $enrollment->workflow_status ?: 'in_progress', [1, 2, 3]);
+        if ($currentStep < 4) {
+            $this->markWorkflowStep($enrollment, 4, $enrollment->workflow_status ?: EnrollmentWorkflow::IN_PROGRESS, [1, 2, 3]);
+        }
 
         $policyReceipts = \App\Models\PolicyReceipt::where('enrollment_id', $enrollment->id)
             ->orderByDesc('id')
@@ -1488,73 +1973,29 @@ class EnrollmentController extends Controller
         return response()->json($options);
     }
 
-    private function validatedEnrollmentData(Request $request, ?Enrollment $enrollment = null): array
+    private function validatedEnrollmentData(Request $request, ?Enrollment $enrollment = null, bool $isAutosave = false): array
     {
-        $validator = Validator::make($request->all(), [
-            'customer_id_no'         => 'nullable|string|max:100',
-            'money_rc_no'            => 'nullable|string|max:50',
-            'agent_name'             => 'nullable|string|max:200',
-            'agent_phone_no'         => 'nullable|string|max:20',
-            'doctor_name'            => 'required|string|max:200',
-            'doctor_address'         => 'nullable|string|max:500',
-            'country'                => 'nullable|integer',
-            'country_name'           => 'nullable|string|max:100',
-            'state'                  => 'nullable|integer',
-            'state_name'             => 'nullable|string|max:100',
-            'city'                   => 'nullable|integer',
-            'city_name'              => 'nullable|string|max:100',
-            'postcode'               => 'nullable|string|max:20',
-            'mobile1'                => 'nullable|string|max:20',
-            'mobile2'                => 'required|string|max:20',
-            'doctor_email'           => [
-                'nullable',
-                'email',
-                'max:200',
-                Rule::unique('enrollments', 'doctor_email')->ignore($enrollment?->id ?? 0),
-            ],
-            'dob'                    => 'nullable|string',
-            'qualification_names'    => 'nullable|array',
-            'qualification_names.*'  => 'nullable|string|max:200',
-            'qualification_years'    => 'nullable|array',
-            'qualification_years.*'  => 'nullable|integer|min:1950|max:' . ((int) date('Y') + 1),
-            'qualification'          => 'nullable',
-            'qualification_year'     => 'nullable|array',
-            'qualification_year.*'   => 'nullable|integer',
-            'medical_registration_no'=> 'nullable|string|max:100',
-            'year_of_reg'            => 'nullable|integer',
-            'clinic_address'         => 'nullable|string|max:500',
-            'aadhar_card_no'         => 'required|string|max:20',
-            'pan_card_no'            => 'required|string|max:20',
-            'specialization_id'      => 'nullable|integer|exists:specializations,id',
-            'payment_mode'           => 'nullable|string|max:50',
-            'plan'                   => 'nullable|integer|in:1,2,3',
-            'plan_name'              => 'nullable|string|max:50',
-            'coverage_id'            => 'nullable|integer',
-            'coverage'               => 'nullable|numeric|min:0',
-            'service_amount'         => 'nullable|numeric|min:0',
-            'payment_amount'         => 'nullable|numeric|min:0',
-            'total_amount'           => 'nullable|numeric|min:0',
-            'payment_method'         => 'nullable|integer|in:1,2,3',
-            'payment_cheque'         => 'nullable|string|max:100',
-            'payment_bank_name'      => 'nullable|string|max:200',
-            'payment_branch_name'    => 'nullable|string|max:200',
-            'payment_upi_transaction_id' => 'nullable|string|max:100',
-            'payment_cash_date'      => 'nullable|date',
-            'bond_to_mail'           => 'nullable|in:Y',
-        ], [
-            'doctor_email.unique' => 'This email already exists in the system. Please use a different email address.',
-        ]);
+        $normalizedEmail = $this->normalizeDoctorEmail($request->input('doctor_email'));
+        if ($normalizedEmail !== $request->input('doctor_email')) {
+            $request->merge(['doctor_email' => $normalizedEmail]);
+        }
 
-        $validator->after(function ($validator) use ($request) {
-            $totalAmount = (float) $request->input('total_amount', 0);
-            $serviceAmount = (float) $request->input('service_amount', 0);
+        $ignoreEnrollmentId = $enrollment?->id
+            ?? (((int) $request->input('workflow_enrollment_id', 0)) ?: null);
 
-            if ($serviceAmount > $totalAmount) {
-                $validator->errors()->add('service_amount', 'Insurance amount cannot be greater than total amount.');
-            }
-        });
+        $validated = \App\Support\EnrollmentFormValidation::make($request, $ignoreEnrollmentId, $isAutosave)->validate();
 
-        $validated = $validator->validate();
+        if (!empty($validated['aadhar_card_no'])) {
+            $validated['aadhar_card_no'] = \App\Support\EnrollmentFormValidation::digitsOnly($validated['aadhar_card_no']);
+        }
+
+        if (!empty($validated['pan_card_no'])) {
+            $validated['pan_card_no'] = \App\Support\EnrollmentFormValidation::normalizePan($validated['pan_card_no']);
+        }
+
+        if (!empty($validated['medical_registration_no'])) {
+            $validated['medical_registration_no'] = trim((string) $validated['medical_registration_no']);
+        }
 
         $validated = $this->mergeQualificationFields($request, $validated);
 
@@ -1568,7 +2009,16 @@ class EnrollmentController extends Controller
 
         unset($validated['qualification_names'], $validated['qualification_years']);
 
+        $validated['doctor_email'] = $this->normalizeDoctorEmail($validated['doctor_email'] ?? null);
+
         return $validated;
+    }
+
+    private function normalizeDoctorEmail(mixed $email): ?string
+    {
+        $normalized = strtolower(trim((string) $email));
+
+        return $normalized !== '' ? $normalized : null;
     }
 
     private function mergeQualificationFields(Request $request, array $payload): array
@@ -1609,7 +2059,11 @@ class EnrollmentController extends Controller
             return 'super_admin';
         }
 
-        return (string) ($user?->role ?: 'agent');
+        if ($this->isPrivilegedAdminUser($user)) {
+            return 'admin';
+        }
+
+        return (string) ($user?->role ?: 'employee');
     }
 
     private function isSuperAdminUser($user): bool
@@ -1640,11 +2094,9 @@ class EnrollmentController extends Controller
 
     private function enrollmentMonitoringQuery(?User $user): Builder
     {
-        if ($this->isPrivilegedAdminUser($user) || $this->adminAccessService->hasPrivilege($user, 'enrollment', 'approve')) {
-            return Enrollment::query()->with(['specialization', 'creator', 'approver'])->orderByDesc('id');
-        }
+        $query = Enrollment::query()->with(['specialization', 'creator', 'approver'])->orderByDesc('id');
 
-        return $this->enrollmentListingQuery($user);
+        return $this->recordAccess->applyOwnedScope($query, $user);
     }
 
     private function ensureEnrollmentStepsUnlocked(Enrollment $enrollment): ?RedirectResponse
@@ -1659,23 +2111,29 @@ class EnrollmentController extends Controller
             return null;
         }
 
+        $user = Auth::user();
+        $redirectRoute = ($user && (int) $enrollment->created_by === (int) $user->id)
+            ? route('admin.my-enrollments.show', $enrollment->id)
+            : route('admin.enrollment.details', $enrollment->id);
+
         return redirect()
-            ->route('admin.enrollment.details', $enrollment->id)
-            ->with('info', 'This enrollment must be approved by an administrator before continuing to the next workflow step.');
+            ->to($redirectRoute)
+            ->with('error', 'Wait for admin approval before continuing to the next step.');
     }
 
     private function enrollmentListingQuery(?User $user): Builder
     {
         $query = Enrollment::query()->with(['specialization', 'creator', 'approver'])->orderByDesc('id');
 
-        if (!$this->isSuperAdminUser($user) && $user?->id) {
-            $query->where(function (Builder $builder) use ($user): void {
-                $builder->where('created_by', $user->id)
-                    ->orWhere('agent_id', $user->id);
-            });
-        }
+        return $this->recordAccess->applyOwnedScope($query, $user);
+    }
 
-        return $query;
+    /**
+     * Approved, completed enrollments visible in Doctor List and renewal reports.
+     */
+    private function activeDoctorListingQuery(?User $user): Builder
+    {
+        return $this->enrollmentListingQuery($user)->productionReady();
     }
 
     private function applyEnrollmentListFilters(Builder $query, Request $request, bool $defaultPendingOnly): void
@@ -1736,15 +2194,11 @@ class EnrollmentController extends Controller
 
     private function authorizeEnrollmentAccess(Enrollment $enrollment): void
     {
-        if ($this->isPrivilegedAdminUser(Auth::user())) {
-            return;
-        }
-
-        $userId = (int) Auth::id();
-
-        if ($userId <= 0 || ((int) $enrollment->created_by !== $userId && (int) $enrollment->agent_id !== $userId)) {
-            abort(403, 'You can only access your own enrollment records.');
-        }
+        $this->recordAccess->assertCanAccessRecord(
+            Auth::user(),
+            $enrollment,
+            'You can only access your own enrollment records.'
+        );
     }
 
     private function shouldForceReadOnly(Enrollment $enrollment): bool
@@ -1754,6 +2208,10 @@ class EnrollmentController extends Controller
         }
 
         $wf = EnrollmentWorkflow::normalize($enrollment->workflow_status);
+
+        if (EnrollmentWorkflow::isOnHold($enrollment)) {
+            return true;
+        }
 
         if ($enrollment->status === 'rejected' || $wf === EnrollmentWorkflow::REJECTED) {
             return true;
@@ -1768,8 +2226,7 @@ class EnrollmentController extends Controller
         }
 
         if ($enrollment->status === 'pending'
-            && $wf === EnrollmentWorkflow::IN_PROGRESS
-            && (int) ($enrollment->current_step ?? 1) >= 2) {
+            && in_array($wf, EnrollmentWorkflow::gateStatuses(), true)) {
             return true;
         }
 
@@ -1790,7 +2247,7 @@ class EnrollmentController extends Controller
             return true;
         }
 
-        if (($enrollment->created_by_role ?? '') === 'super_admin') {
+        if (in_array(($enrollment->created_by_role ?? ''), ['super_admin', 'admin'], true)) {
             return true;
         }
 
@@ -1805,5 +2262,54 @@ class EnrollmentController extends Controller
         }
 
         return false;
+    }
+
+    private function persistStep1DocumentsOrFail(Request $request, Enrollment $enrollment): void
+    {
+        try {
+            $this->doctorDocumentService->persistEnrollmentStep1Documents($request, $enrollment);
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withMessages([
+                'uploads' => [$e->getMessage()],
+            ]);
+        }
+    }
+
+    private function resolveAutosaveDoctorName(mixed $name): string
+    {
+        $trimmed = trim((string) $name);
+
+        return $trimmed !== '' ? $trimmed : 'Draft enrollment';
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $keys
+     * @return array<string, mixed>
+     */
+    private function payloadForAutosaveFill(array $payload, array $keys): array
+    {
+        $numericZeroSkips = ['specialization_id', 'plan', 'coverage_id', 'country', 'state', 'city', 'year_of_reg'];
+        $filled = [];
+
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $payload)) {
+                continue;
+            }
+
+            $value = $payload[$key];
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if (in_array($key, $numericZeroSkips, true) && (int) $value === 0) {
+                continue;
+            }
+
+            $filled[$key] = $value;
+        }
+
+        return $filled;
     }
 }

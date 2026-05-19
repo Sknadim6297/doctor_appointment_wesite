@@ -31,6 +31,16 @@
         </div>
     </div>
 
+    @if(session('success'))
+        <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{{ session('success') }}</div>
+    @endif
+    @if(session('error'))
+        <div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{{ session('error') }}</div>
+    @endif
+    @if(session('info'))
+        <div class="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">{{ session('info') }}</div>
+    @endif
+
     <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
         <form action="{{ route('admin.enrollment.policy-receipt.store', $enrollment) }}" method="post" enctype="multipart/form-data" id="policy_received_form" class="space-y-6">
             @csrf
@@ -68,7 +78,7 @@
             </div>
             <div class="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
                 <a href="{{ route('admin.enrollment.step2', $enrollment) }}" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Back</a>
-                <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
+                <button type="submit" id="policy_submit_btn" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60">
                     <i class="ri-arrow-right-line"></i>
                     <span>Save and Continue to Step 4</span>
                 </button>
@@ -176,7 +186,22 @@
 
             form.addEventListener('input', scheduleAutosave, true);
             form.addEventListener('change', scheduleAutosave, true);
-            setInterval(runAutosave, 25000);
+
+            const submitBtn = document.getElementById('policy_submit_btn');
+            form.addEventListener('submit', function (event) {
+                if (form.dataset.submitting === '1') {
+                    event.preventDefault();
+                    return;
+                }
+                form.dataset.submitting = '1';
+                autosaveQueued = false;
+                if (autosaveTimer) {
+                    clearTimeout(autosaveTimer);
+                }
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                }
+            }, { once: false });
         })();
         @endif
     </script>

@@ -234,6 +234,7 @@
                     'groupedDocuments' => $groupedDocuments ?? [],
                     'documentCategoryLabels' => $documentCategoryLabels ?? [],
                     'canVerifyDocuments' => $canVerifyDocuments ?? false,
+                    'isAdminManagedEnrollment' => $isAdminManagedEnrollment ?? $doctor->isAdminManaged(),
                 ])
             </div>
 

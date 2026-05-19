@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Enrollment;
 use App\Services\EnrollmentEditAccessService;
+use App\Services\EnrollmentRecordAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,6 +14,7 @@ class EnrollmentEditAccessController extends Controller
 {
     public function __construct(
         private readonly EnrollmentEditAccessService $editAccessService,
+        private readonly EnrollmentRecordAccessService $recordAccess,
     ) {
     }
 
@@ -58,14 +60,11 @@ class EnrollmentEditAccessController extends Controller
 
     private function authorizeEnrollment(Enrollment $enrollment): void
     {
-        if ($this->isPrivilegedAdmin(Auth::user())) {
-            return;
-        }
-
-        $uid = (int) Auth::id();
-        if ($uid <= 0 || ((int) $enrollment->created_by !== $uid && (int) $enrollment->agent_id !== $uid)) {
-            abort(403, 'You can only access your own enrollment records.');
-        }
+        $this->recordAccess->assertCanAccessRecord(
+            Auth::user(),
+            $enrollment,
+            'You can only access your own enrollment records.'
+        );
     }
 
     private function isPrivilegedAdmin($user): bool

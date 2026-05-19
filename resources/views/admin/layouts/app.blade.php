@@ -140,6 +140,9 @@
                     <h1 class="page-title text-xl font-bold text-slate-900">@yield('page-title', 'Dashboard')</h1>
                 </div>
 
+                <div class="flex items-center gap-3">
+                @include('admin.layouts.partials.notification-bell')
+
                 <div class="relative" x-data="{ open: false }">
                     <button @click="open = !open" class="glass-panel flex items-center gap-3 rounded-xl px-3 py-2">
                         <div class="hidden text-right sm:block">
@@ -166,6 +169,7 @@
                             </button>
                         </form>
                     </div>
+                </div>
                 </div>
             </header>
 
@@ -224,6 +228,7 @@
 
             let currentSubjectType = 'enrollment';
             let currentSubjectId = null;
+            let currentAccessAction = 'view';
             let redirectUrl = '';
 
             function setStatus(message, type) {
@@ -271,6 +276,7 @@
                         subject_type: currentSubjectType,
                         subject_id: currentSubjectId,
                         redirect_url: redirectUrl,
+                        access_action: currentAccessAction,
                     });
 
                     setStatus(result.message || 'OTP sent.', 'success');
@@ -299,6 +305,7 @@
                         subject_id: currentSubjectId,
                         otp,
                         redirect_url: redirectUrl,
+                        access_action: currentAccessAction,
                     });
 
                     setStatus('OTP verified. Redirecting...', 'success');
@@ -318,12 +325,59 @@
                 setStatus('', '');
             }
 
-            function openModal(subjectId, nextUrl) {
+            function openModal(subjectId, nextUrl, accessAction) {
                 currentSubjectId = subjectId;
                 redirectUrl = nextUrl;
+                currentAccessAction = accessAction || 'view';
                 modal.classList.add('show');
                 modal.setAttribute('aria-hidden', 'false');
                 requestOtp();
+            }
+
+            // Auto-open modal when middleware flashed a sensitive_otp payload
+            const initialSensitiveOtp = @json(session('sensitive_otp', null));
+            if (initialSensitiveOtp && initialSensitiveOtp.required) {
+                try {
+                    openModal(initialSensitiveOtp.subject_id, initialSensitiveOtp.redirect_url || window.location.href, initialSensitiveOtp.access_action);
+                } catch (e) {
+                    // ignore if modal cannot open
+                }
+            }
+
+            function resolveSensitiveLink(absoluteUrl) {
+                const path = absoluteUrl.pathname;
+
+                const doctorProfile = path.match(/^\/admin\/doctors\/(\d+)$/);
+                if (doctorProfile) {
+                    const tab = absoluteUrl.searchParams.get('tab');
+                    if (tab === 'doctor_documents') {
+                        return { subjectId: Number(doctorProfile[1]), accessAction: 'documents' };
+                    }
+
+                    return { subjectId: Number(doctorProfile[1]), accessAction: 'view' };
+                }
+
+                const enrollmentEdit = path.match(/^\/admin\/enrollment\/(\d+)\/edit$/);
+                if (enrollmentEdit) {
+                    return { subjectId: Number(enrollmentEdit[1]), accessAction: 'edit' };
+                }
+
+                const legacyEdit = path.match(/^\/admin\/index\.php\/doctor_list\/edit_doctor\/(\d+)$/);
+                if (legacyEdit) {
+                    return { subjectId: Number(legacyEdit[1]), accessAction: 'edit' };
+                }
+
+                const documentView = path.match(/^\/admin\/doctors\/(\d+)\/documents\/(\d+)\/(view|download)$/);
+                if (documentView) {
+                    return { subjectId: Number(documentView[1]), accessAction: 'documents' };
+                }
+
+                const receiptView = path.match(/^\/admin\/receipts\/(\d+)\/view$/);
+                if (receiptView) {
+                    return { subjectId: Number(receiptView[1]), accessAction: 'view' };
+                }
+
+                return null;
             }
 
             document.addEventListener('click', function (event) {
@@ -338,16 +392,14 @@
                 }
 
                 const absoluteUrl = new URL(href, window.location.origin);
-                const doctorMatch = absoluteUrl.pathname.match(/^\/admin\/doctors\/(\d+)$/);
-                const receiptViewMatch = absoluteUrl.pathname.match(/^\/admin\/receipts\/(\d+)\/view$/);
-                const subjectId = doctorMatch ? Number(doctorMatch[1]) : (receiptViewMatch ? Number(receiptViewMatch[1]) : null);
+                const resolved = resolveSensitiveLink(absoluteUrl);
 
-                if (!subjectId) {
+                if (!resolved || !resolved.subjectId) {
                     return;
                 }
 
                 event.preventDefault();
-                openModal(subjectId, absoluteUrl.toString());
+                openModal(resolved.subjectId, absoluteUrl.toString(), resolved.accessAction);
             });
 
             cancelBtn.addEventListener('click', closeModal);

@@ -38,7 +38,7 @@
     @endif
 
     <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
-        <form action="{{ route('admin.posts.store') }}" method="post" enctype="multipart/form-data" id="post_upload_form" class="space-y-6">
+        <form action="{{ route('admin.enrollment.workflow-post.store', $enrollment) }}" method="post" enctype="multipart/form-data" id="post_upload_form" class="space-y-6">
             @csrf
             <input type="hidden" name="doctor" value="{{ $enrollment->id }}">
             <input type="hidden" name="workflow_step" value="4">

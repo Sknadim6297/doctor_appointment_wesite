@@ -15,6 +15,7 @@ use App\Models\RenewalChequeDeposit;
 use App\Models\Specialization;
 use App\Services\ActivityLogService;
 use App\Services\DoctorDocumentService;
+use App\Services\EnrollmentRecordAccessService;
 use App\Services\SecurityAlertService;
 use App\Support\DoctorDocumentCatalog;
 use Carbon\Carbon;
@@ -29,6 +30,7 @@ class DoctorController extends Controller
         private readonly ActivityLogService $activityLogService,
         private readonly SecurityAlertService $securityAlertService,
         private readonly DoctorDocumentService $doctorDocumentService,
+        private readonly EnrollmentRecordAccessService $recordAccess,
     ) {
     }
 
@@ -45,7 +47,12 @@ class DoctorController extends Controller
             metadata: $request->only(['search', 'specialization_id', 'plan', 'renewal_status'])
         );
 
-        $query = Enrollment::query()->productionReady()->with('specialization')->orderByDesc('created_at');
+        $query = $this->recordAccess->applyOwnedScope(
+            Enrollment::query()
+                ->productionReady()
+                ->with(['specialization', 'latestPolicyReceipt', 'creator']),
+            $request->user()
+        )->orderByDesc('created_at');
 
         // Filter by search term (name, email, phone, membership)
         if (!empty($request->search)) {
@@ -107,8 +114,10 @@ class DoctorController extends Controller
             metadata: ['search' => $search]
         );
 
-        $memberships = Enrollment::query()
-            ->productionReady()
+        $memberships = $this->recordAccess->applyOwnedScope(
+            Enrollment::query()->productionReady(),
+            $request->user()
+        )
             ->select('id', 'doctor_name', 'mobile1', 'customer_id_no')
             ->whereNotNull('customer_id_no')
             ->where('customer_id_no', '!=', '')
@@ -239,6 +248,12 @@ class DoctorController extends Controller
     {
         $doctor = Enrollment::query()->productionReady()->with(['specialization', 'creator'])->findOrFail($id);
 
+        $this->recordAccess->assertCanAccessRecord(
+            request()->user(),
+            $doctor,
+            'You are not authorized to view this doctor profile.'
+        );
+
         $this->activityLogService->log(
             request(),
             'doctors',
@@ -282,7 +297,8 @@ class DoctorController extends Controller
 
         $groupedDocuments = $this->doctorDocumentService->groupedForEnrollment($doctor);
         $documentCategoryLabels = DoctorDocumentCatalog::categoryLabels();
-        $canVerifyDocuments = auth()->user() && (
+        $isAdminManagedEnrollment = $doctor->isAdminManaged();
+        $canVerifyDocuments = !$isAdminManagedEnrollment && auth()->user() && (
             in_array(auth()->user()->role ?? null, ['admin', 'super_admin'], true)
             || (method_exists(auth()->user(), 'hasAdminRole') && auth()->user()->hasAdminRole(['admin', 'super_admin']))
         );
@@ -326,6 +342,7 @@ class DoctorController extends Controller
             'groupedDocuments',
             'documentCategoryLabels',
             'canVerifyDocuments',
+            'isAdminManagedEnrollment',
             'cases',
             'policyReceipts',
             'activeTab'
@@ -345,18 +362,20 @@ class DoctorController extends Controller
             metadata: $request->only(['search_month', 'search_year'])
         );
 
-        $query = Enrollment::query()
-            ->productionReady()
-            ->with('specialization')
-            ->where(function ($q) {
-                $q->whereNull('aadhar_card_no')
-                    ->orWhere('aadhar_card_no', '')
-                    ->orWhereNull('pan_card_no')
-                    ->orWhere('pan_card_no', '')
-                    ->orWhereNull('medical_registration_no')
-                    ->orWhere('medical_registration_no', '');
-            })
-            ->orderByDesc('created_at');
+        $query = $this->recordAccess->applyOwnedScope(
+            Enrollment::query()
+                ->productionReady()
+                ->with('specialization')
+                ->where(function ($q) {
+                    $q->whereNull('aadhar_card_no')
+                        ->orWhere('aadhar_card_no', '')
+                        ->orWhereNull('pan_card_no')
+                        ->orWhere('pan_card_no', '')
+                        ->orWhereNull('medical_registration_no')
+                        ->orWhere('medical_registration_no', '');
+                }),
+            $request->user()
+        )->orderByDesc('created_at');
 
         $searchMonth = $request->input('search_month');
         $searchYear = $request->input('search_year');
@@ -386,7 +405,10 @@ class DoctorController extends Controller
      */
     public function csvReport(Request $request)
     {
-        $query = Enrollment::query()->productionReady()->with('specialization');
+        $query = $this->recordAccess->applyOwnedScope(
+            Enrollment::query()->productionReady()->with('specialization'),
+            $request->user()
+        );
 
         // Apply same filters as index
         if (!empty($request->search)) {
@@ -1285,12 +1307,14 @@ class DoctorController extends Controller
         $selectedMonth = (string) $request->input('search_month', '');
         $selectedYear = (string) $request->input('search_year', '');
 
-        $query = Enrollment::query()
-            ->productionReady()
-            ->with('specialization')
-            ->whereNotNull('money_rc_no')
-            ->where('money_rc_no', '!=', '')
-            ->orderByDesc('created_at');
+        $query = $this->recordAccess->applyOwnedScope(
+            Enrollment::query()
+                ->productionReady()
+                ->with('specialization')
+                ->whereNotNull('money_rc_no')
+                ->where('money_rc_no', '!=', ''),
+            $request->user()
+        )->orderByDesc('created_at');
 
         if (in_array($selectedMonth, $months, true)) {
             $monthNumber = array_search($selectedMonth, $months, true) + 1;

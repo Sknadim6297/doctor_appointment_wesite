@@ -31,9 +31,9 @@
             <i class="ri-shield-check-line"></i>
             Approval queue
         </a>
-        <a href="{{ route('admin.enrollment') }}" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+        <a href="{{ route('admin.doctors.index') }}" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
             <i class="ri-list-check-2"></i>
-            Doctor list
+            Active doctor list
         </a>
     </div>
 </div>
@@ -96,9 +96,10 @@
                 <tr>
                     <th class="px-4 py-3">Doctor</th>
                     <th class="px-4 py-3">Customer ID</th>
-                    <th class="px-4 py-3">Step</th>
+                    <th class="px-4 py-3">Current step</th>
+                    <th class="px-4 py-3">Approval status</th>
                     <th class="px-4 py-3">Workflow</th>
-                    <th class="px-4 py-3">Last activity</th>
+                    <th class="px-4 py-3">Last updated</th>
                     <th class="px-4 py-3">Created by</th>
                     <th class="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -112,28 +113,38 @@
                             <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">Step {{ (int) ($enr->current_step ?? 1) }}</span>
                         </td>
                         <td class="px-4 py-3">
+                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {{ \App\Support\EnrollmentWorkflow::approvalBadgeClasses($enr) }}">
+                                {{ \App\Support\EnrollmentWorkflow::approvalStatus($enr) }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3">
                             <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {{ \App\Support\EnrollmentWorkflow::badgeClasses($enr->workflow_status) }}">
                                 {{ \App\Support\EnrollmentWorkflow::displayStatus($enr) }}
                             </span>
                         </td>
-                        <td class="px-4 py-3 text-slate-600">{{ optional($enr->last_activity_at ?? $enr->updated_at)->diffForHumans() ?? '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600">{{ optional($enr->last_activity_at ?? $enr->updated_at)->format('d M Y, h:i A') }}</td>
                         <td class="px-4 py-3">
                             <div class="font-medium text-slate-800">{{ $enr->creator?->name ?? '—' }}</div>
                             <div class="text-xs text-slate-500">{{ $enr->created_by_role ?? $enr->creator?->role ?? '' }}</div>
                         </td>
                         <td class="px-4 py-3 text-right">
                             <div class="inline-flex flex-wrap justify-end gap-2">
-                                <a href="{{ route('admin.enrollment.details', $enr->id) }}" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50">Dossier</a>
+                                @php
+                                    $rowWorkflow = \App\Support\EnrollmentWorkflow::normalize($enr->workflow_status);
+                                @endphp
+                                <a href="{{ route('admin.enrollment.details', $enr->id) }}" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50">{{ $rowWorkflow === \App\Support\EnrollmentWorkflow::COMPLETED ? 'View' : 'Dossier' }}</a>
                                 @php $isRowCreator = auth()->id() === (int) ($enr->created_by ?? 0); @endphp
-                                @if(($canEdit ?? false) || ($enr->workflow_status === 'returned_for_correction' && $isRowCreator))
-                                    <a href="{{ route('admin.enrollment.resume', $enr) }}" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">Resume</a>
+                                @if(\App\Support\EnrollmentWorkflow::canResumeFromDashboard($enr) && (($canEdit ?? false) || $isRowCreator))
+                                    <a href="{{ route('admin.enrollment.resume', $enr) }}" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">
+                                        {{ \App\Support\EnrollmentWorkflow::dashboardResumeLabel($enr) }}
+                                    </a>
                                 @endif
                             </div>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7" class="px-4 py-10 text-center text-slate-500">No enrollments in this view.</td>
+                        <td colspan="8" class="px-4 py-10 text-center text-slate-500">No enrollments in this view.</td>
                     </tr>
                 @endforelse
             </tbody>

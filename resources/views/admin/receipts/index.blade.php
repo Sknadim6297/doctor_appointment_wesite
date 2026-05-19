@@ -975,5 +975,22 @@ document.addEventListener('click', function (event) {
         closeAddReceiptModal();
     }
 });
+
+@if(request()->filled('renew_doctor'))
+document.addEventListener('DOMContentLoaded', function () {
+    const doctorId = @json((string) request('renew_doctor'));
+    if (!doctorId) return;
+    openAddReceiptModal();
+    const doctorSelect = document.getElementById('doctor');
+    if (doctorSelect) {
+        doctorSelect.value = doctorId;
+        doctor_select(doctorId);
+    }
+    const rcFor = document.getElementById('money_rc_for');
+    if (rcFor) rcFor.value = 'renewal';
+    const receiptNo = document.getElementById('money_reciept_no');
+    if (receiptNo) receiptNo.focus();
+});
+@endif
 </script>
 @endsection

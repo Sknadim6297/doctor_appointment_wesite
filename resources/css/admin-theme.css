@@ -409,6 +409,27 @@ body {
     color: #ffffff;
 }
 
+.approval-decision-panel .approval-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-width: 11rem;
+    border-radius: 0.75rem;
+    border-width: 2px;
+    border-style: solid;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #ffffff !important;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.12);
+    cursor: pointer;
+}
+
+.approval-decision-panel .approval-action-btn:hover {
+    filter: brightness(0.95);
+}
+
 .toast-container {
     position: fixed;
     top: 1rem;
