@@ -11,6 +11,7 @@ class AdminRole extends Model
     use HasFactory;
 
     protected $fillable = [
+        'legacy_role_id',
         'role_title',
         'role_key',
     ];

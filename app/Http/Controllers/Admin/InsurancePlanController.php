@@ -37,13 +37,13 @@ class InsurancePlanController extends Controller
     {
         $validated = $request->validate([
             'specializations' => 'required|array|min:1',
-            'specializations.*' => 'string',
+            'specializations.*' => 'integer|exists:specializations,id',
             'amount' => 'required|numeric|min:0.01',
             'service_tax' => 'required|numeric|min:0|max:100',
         ]);
 
         InsurancePlan::create([
-            'specializations' => $validated['specializations'],
+            'specializations' => array_map('intval', $validated['specializations']),
             'amount_per_lakh' => $validated['amount'],
             'service_tax_percent' => $validated['service_tax'],
         ]);
@@ -55,13 +55,13 @@ class InsurancePlanController extends Controller
     {
         $validated = $request->validate([
             'specializations' => 'required|array|min:1',
-            'specializations.*' => 'string',
+            'specializations.*' => 'integer|exists:specializations,id',
             'amount' => 'required|numeric|min:0.01',
             'service_tax' => 'required|numeric|min:0|max:100',
         ]);
 
         $insurancePlan->update([
-            'specializations' => $validated['specializations'],
+            'specializations' => array_map('intval', $validated['specializations']),
             'amount_per_lakh' => $validated['amount'],
             'service_tax_percent' => $validated['service_tax'],
         ]);

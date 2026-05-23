@@ -40,17 +40,10 @@ class CallSheetController extends Controller
 
         $query = Enrollment::query()
             ->with('specialization')
-            ->where('hide_from_call_sheet', false)
+            ->visibleOnCallSheet()
             ->orderByDesc('created_at');
 
-        if (in_array($selectedMonth, $monthNames, true)) {
-            $monthNumber = array_search($selectedMonth, $monthNames, true) + 1;
-            $query->whereMonth('created_at', $monthNumber);
-        }
-
-        if (is_numeric($selectedYear) && (int) $selectedYear >= 2000 && (int) $selectedYear <= 2100) {
-            $query->whereYear('created_at', (int) $selectedYear);
-        }
+        $this->applyCallSheetPeriodFilter($query, $selectedMonth, $selectedYear, $monthNames);
 
         $callSheets = $query->paginate(5)->appends($request->query());
         $years = range(2000, ((int) now()->format('Y')) + 10);
@@ -248,17 +241,10 @@ class CallSheetController extends Controller
 
         $query = Enrollment::query()
             ->with('specialization')
-            ->where('hide_from_call_sheet', false)
+            ->visibleOnCallSheet()
             ->orderByDesc('created_at');
 
-        if (in_array($selectedMonth, $monthNames, true)) {
-            $monthNumber = array_search($selectedMonth, $monthNames, true) + 1;
-            $query->whereMonth('created_at', $monthNumber);
-        }
-
-        if (is_numeric($selectedYear) && (int) $selectedYear >= 2000 && (int) $selectedYear <= 2100) {
-            $query->whereYear('created_at', (int) $selectedYear);
-        }
+        $this->applyCallSheetPeriodFilter($query, $selectedMonth, $selectedYear, $monthNames);
 
         $rows = $query->get();
 
@@ -287,5 +273,27 @@ class CallSheetController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * @param  array<int, string>  $monthNames
+     */
+    private function applyCallSheetPeriodFilter($query, ?string $selectedMonth, mixed $selectedYear, array $monthNames): void
+    {
+        if (in_array($selectedMonth, $monthNames, true)) {
+            $monthNumber = array_search($selectedMonth, $monthNames, true) + 1;
+            $query->where(function ($period) use ($selectedMonth, $monthNumber) {
+                $period->where('call_sheet_month', $selectedMonth)
+                    ->orWhereMonth('created_at', $monthNumber);
+            });
+        }
+
+        if (is_numeric($selectedYear) && (int) $selectedYear >= 2000 && (int) $selectedYear <= 2100) {
+            $year = (int) $selectedYear;
+            $query->where(function ($period) use ($year) {
+                $period->where('call_sheet_year', (string) $year)
+                    ->orWhereYear('created_at', $year);
+            });
+        }
     }
 }

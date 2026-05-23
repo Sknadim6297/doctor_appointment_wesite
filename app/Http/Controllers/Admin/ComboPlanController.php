@@ -14,6 +14,7 @@ class ComboPlanController extends Controller
         $search = trim((string) $request->query('search', ''));
 
         $plans = ComboPlan::query()
+            ->with('linkedSpecializations:id,name')
             ->when($search !== '', function ($query) use ($search) {
                 $query->where('specializations', 'like', '%' . $search . '%')
                     ->orWhere('coverage_lakh', 'like', '%' . $search . '%')

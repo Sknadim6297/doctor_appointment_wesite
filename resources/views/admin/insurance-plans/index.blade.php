@@ -59,7 +59,9 @@
                     @php
                         $amount = (float) $plan->amount_per_lakh;
                         $serviceTax = (float) $plan->service_tax_percent;
-                        $specs = is_array($plan->specializations) ? implode(', ', $plan->specializations) : $plan->specializations;
+                        $specLabels = $plan->resolveSpecializationLabels();
+                        $specs = $specLabels !== [] ? implode(', ', $specLabels) : '—';
+                        $specIds = $plan->specializationIds();
                     @endphp
                     <tr>
                         <td>{{ $plans->firstItem() + $loop->index }}</td>
@@ -69,7 +71,7 @@
                         <td>
                             <div class="flex flex-wrap items-center gap-2" style="min-width: 160px;">
                                 <button type="button"
-                                        @click="openEdit({{ $plan->id }}, '{{ number_format($amount, 2, '.', '') }}', '{{ number_format($serviceTax, 2, '.', '') }}', {{ json_encode($plan->specializations) }})"
+                                        @click="openEdit({{ $plan->id }}, '{{ number_format($amount, 2, '.', '') }}', '{{ number_format($serviceTax, 2, '.', '') }}', {{ json_encode($specIds) }})"
                                         class="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200">
                                     <i class="ri-pencil-line"></i>
                                     <span>Edit</span>
@@ -116,7 +118,7 @@
                             <div class="controls">
                                 <select id="specializations" class="form-control" multiple name="specializations[]" size="8" style="height:auto;">
                                     @foreach($specializations as $spec)
-                                        <option value="{{ $spec->name }}">{{ $spec->name }}</option>
+                                        <option value="{{ $spec->id }}">{{ $spec->name }}</option>
                                     @endforeach
                                 </select>
                                 <small class="text-slate-600">Hold Ctrl (Windows) or Cmd (Mac) to select multiple</small>
@@ -166,7 +168,7 @@
                             <div class="controls">
                                 <select id="edit_specializations" class="form-control" multiple name="specializations[]" size="8" style="height:auto;">
                                     @foreach($specializations as $spec)
-                                        <option value="{{ $spec->name }}">{{ $spec->name }}</option>
+                                        <option value="{{ $spec->id }}">{{ $spec->name }}</option>
                                     @endforeach
                                 </select>
                                 <small class="text-slate-600">Hold Ctrl (Windows) or Cmd (Mac) to select multiple</small>
@@ -283,7 +285,7 @@
                     const select = document.getElementById('edit_specializations');
                     if (select) {
                         Array.from(select.options).forEach(option => {
-                            option.selected = data.editSpecializations.includes(option.value);
+                            option.selected = data.editSpecializations.map(String).includes(String(option.value));
                         });
                     }
                 }, 100);

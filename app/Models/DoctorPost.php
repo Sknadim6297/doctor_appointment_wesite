@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DoctorPost extends Model
 {
     protected $fillable = [
+        'legacy_post_id',
         'enrollment_id',
         'doctor_name',
         'post_doc_date',

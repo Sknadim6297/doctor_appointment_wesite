@@ -10,6 +10,7 @@ class PolicyReceipt extends Model
     public const STATUS_COMPLETED = 'completed';
 
     protected $fillable = [
+        'legacy_policy_id',
         'policy_no',
         'enrollment_id',
         'doctor_name',

@@ -37,7 +37,7 @@
                         <div class="text-xs text-slate-500">{{ $doctor->mobile1 ?? '—' }}</div>
                     </td>
                     <td>
-                        <div class="text-sm">{{ $doctor->specialization->name ?? '—' }}</div>
+                        <div class="text-sm">{{ $doctor->displaySpecializationName() ?? '—' }}</div>
                         <div class="mt-0.5">
                             @php $planLabel = $doctor->planLabel(); @endphp
                             @if($planLabel !== '—')
@@ -64,15 +64,6 @@
                     </td>
                     <td>
                         <div class="text-sm font-semibold whitespace-nowrap">
-                            @if($doctor->payment_amount)
-                                Rs. {{ number_format((float) $doctor->payment_amount, 0) }}
-                            @else
-                                —
-                            @endif
-                        </div>
-                    </td>
-                    <td>
-                        <div class="text-sm font-semibold whitespace-nowrap">
                             @if($doctor->service_amount)
                                 Rs. {{ number_format((float) $doctor->service_amount, 0) }}
                             @else
@@ -81,7 +72,16 @@
                         </div>
                     </td>
                     <td>
-                        <div class="text-sm whitespace-nowrap">{{ optional($policy?->receive_date)->format('d M Y') ?? '—' }}</div>
+                        <div class="text-sm font-semibold whitespace-nowrap">
+                            @if($doctor->payment_amount)
+                                Rs. {{ number_format((float) $doctor->payment_amount, 0) }}
+                            @else
+                                —
+                            @endif
+                        </div>
+                    </td>
+                    <td>
+                        <div class="text-sm whitespace-nowrap">{{ optional($policy?->receive_date ?? $doctor->policy_date)->format('d M Y') ?? '—' }}</div>
                     </td>
                     <td>
                         <div class="text-sm whitespace-nowrap">{{ optional($lastRenewed)->format('d M Y') ?? '—' }}</div>

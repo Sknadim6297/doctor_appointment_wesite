@@ -5,12 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class LegalCase extends Model
 {
     use HasFactory;
 
     protected $fillable = [
+        'legacy_case_id',
+        'legal_case_category_id',
         'enrollment_id',
         'doctor_name',
         'doctor_phone',
@@ -57,5 +60,25 @@ class LegalCase extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(LegalCaseCategory::class, 'legal_case_category_id');
+    }
+
+    public function proceedings(): HasMany
+    {
+        return $this->hasMany(LegalCaseProceeding::class)->orderByDesc('proceed_date');
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(LegalCaseDocument::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(LegalCasePayment::class);
     }
 }

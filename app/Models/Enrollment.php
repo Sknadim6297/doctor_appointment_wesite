@@ -5,6 +5,9 @@ namespace App\Models;
 use App\Support\DoctorDocumentCatalog;
 use App\Support\EnrollmentWorkflow;
 use App\Models\PolicyReceipt;
+use App\Models\NormalPlan;
+use App\Models\HighRiskPlan;
+use App\Models\ComboPlan;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 class Enrollment extends Model
 {
     protected $fillable = [
+        'legacy_user_id',
         'customer_id_no',
         'money_rc_no',
         'agent_name',
@@ -57,8 +61,12 @@ class Enrollment extends Model
         'last_renewal_date',
         'bond_to_mail',
         'auto_sms_enabled',
+        'legacy_call_sheet_id',
         'hide_from_call_sheet',
         'call_sheet_specialization_ids',
+        'call_sheet_card_slug',
+        'call_sheet_month',
+        'call_sheet_year',
         'created_by',
         'status',
         'agent_id',
@@ -136,17 +144,58 @@ class Enrollment extends Model
     }
 
     /**
+     * Marketing call sheet list: legacy call sheet rows and manually added entries only.
+     */
+    public function scopeVisibleOnCallSheet(Builder $query): Builder
+    {
+        return $query
+            ->where('hide_from_call_sheet', false)
+            ->where(function (Builder $outer): void {
+                $outer->whereNotNull('legacy_call_sheet_id')
+                    ->orWhere(function (Builder $manual): void {
+                        $manual
+                            ->whereNull('legacy_user_id')
+                            ->whereNull('legacy_call_sheet_id')
+                            ->whereNull('customer_id_no');
+                    });
+            });
+    }
+
+    /**
      * Active doctors eligible for Doctor List, renewals, and production modules.
      */
     public function scopeProductionReady(Builder $query): Builder
     {
-        return $query
-            ->where('workflow_status', EnrollmentWorkflow::COMPLETED)
-            ->where('is_step_incomplete', false)
-            ->where('status', 'approved')
-            ->whereNotNull('approved_at')
-            ->whereNotNull('approved_by')
-            ->withRequiredDocumentsVerified();
+        return $query->where(function (Builder $outer): void {
+            $outer->where(function (Builder $standard): void {
+                $standard
+                    ->where('workflow_status', EnrollmentWorkflow::COMPLETED)
+                    ->where('is_step_incomplete', false)
+                    ->where('status', 'approved')
+                    ->whereNotNull('approved_at')
+                    ->whereNotNull('approved_by')
+                    ->whereNull('legacy_user_id');
+
+                foreach (DoctorDocumentCatalog::requiredEnrollmentDocumentTypes() as $documentType) {
+                    $standard->whereHas('doctorDocuments', function (Builder $docQuery) use ($documentType): void {
+                        $docQuery
+                            ->where('is_active', true)
+                            ->where('document_type', $documentType)
+                            ->where('verification_status', DoctorDocumentCatalog::STATUS_APPROVED);
+                    });
+                }
+            });
+
+            $outer->orWhere(function (Builder $legacy): void {
+                $legacy
+                    ->whereNotNull('legacy_user_id')
+                    ->where('workflow_status', EnrollmentWorkflow::COMPLETED)
+                    ->where('is_step_incomplete', false)
+                    ->where('status', 'approved')
+                    ->whereNotNull('approved_at')
+                    ->whereNotNull('approved_by');
+            });
+        });
     }
 
     /**
@@ -181,6 +230,10 @@ class Enrollment extends Model
             || !$this->approved_at
             || !$this->approved_by) {
             return false;
+        }
+
+        if ($this->legacy_user_id !== null) {
+            return true;
         }
 
         return $this->hasAllRequiredDocumentsVerified();
@@ -226,21 +279,45 @@ class Enrollment extends Model
     public function formattedCoverageLabel(): string
     {
         $planId = (int) $this->plan;
-        $coverageId = (int) ($this->coverage_id ?? 0);
+        $coverageLakh = (float) ($this->coverage ?? 0);
+
+        if ($coverageLakh > 0) {
+            $formatted = rtrim(rtrim(number_format($coverageLakh, 2, '.', ''), '0'), '.');
+
+            return $formatted . ' Lakh';
+        }
 
         if ($planId === 3) {
             return 'As per insurance T/C';
         }
 
-        if ($coverageId > 0) {
-            return 'INR ' . $coverageId . '00000';
-        }
+        $coverageId = (int) ($this->coverage_id ?? 0);
 
-        if ($this->coverage) {
-            return 'Rs. ' . number_format((float) $this->coverage, 0);
+        if ($coverageId > 0) {
+            $fromPlan = $this->resolveCoverageLakhFromPlanId($planId, $coverageId);
+
+            if ($fromPlan !== null) {
+                return rtrim(rtrim(number_format($fromPlan, 2, '.', ''), '0'), '.') . ' Lakh';
+            }
         }
 
         return '—';
+    }
+
+    private function resolveCoverageLakhFromPlanId(int $planType, int $coverageId): ?float
+    {
+        $plan = match ($planType) {
+            1 => NormalPlan::query()->find($coverageId),
+            2 => HighRiskPlan::query()->find($coverageId),
+            3 => ComboPlan::query()->find($coverageId),
+            default => null,
+        };
+
+        if ($plan === null) {
+            return null;
+        }
+
+        return (float) $plan->coverage_lakh;
     }
 
     public function doctorDocuments()

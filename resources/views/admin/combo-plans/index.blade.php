@@ -70,7 +70,9 @@
                         $fiveYear = $yearly * 5 * 0.90;
                         $coverage = rtrim(rtrim(number_format((float) $plan->coverage_lakh, 2, '.', ''), '0'), '.');
                         $fmt = fn($v) => 'Rs ' . number_format($v, 0) . '/-';
-                        $specs = is_array($plan->specializations) ? implode(', ', $plan->specializations) : $plan->specializations;
+                        $specs = $plan->linkedSpecializations->isNotEmpty()
+                            ? $plan->linkedSpecializations->pluck('name')->implode(', ')
+                            : (is_array($plan->specializations) ? implode(', ', $plan->specializations) : $plan->specializations);
                     @endphp
                     <tr>
                         <td>{{ $plans->firstItem() + $loop->index }}</td>

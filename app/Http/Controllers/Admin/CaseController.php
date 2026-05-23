@@ -58,6 +58,14 @@ class CaseController extends Controller
 
     public function showJson(LegalCase $legalCase): JsonResponse
     {
+        $legalCase->load([
+            'doctor:id,doctor_name,mobile1,doctor_email,customer_id_no',
+            'creator:id,name,email',
+            'proceedings' => fn ($query) => $query->orderByDesc('proceed_date')->limit(50),
+            'documents',
+            'payments',
+        ]);
+
         return response()->json([
             'success' => true,
             'case' => $legalCase,

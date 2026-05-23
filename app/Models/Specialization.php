@@ -8,5 +8,6 @@ class Specialization extends Model
 {
     protected $fillable = [
         'name',
+        'legacy_user_type',
     ];
 }

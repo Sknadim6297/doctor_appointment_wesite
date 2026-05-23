@@ -20,6 +20,7 @@ use App\Services\EnrollmentRecordAccessService;
 use App\Services\LocationService;
 use App\Services\WorkflowNotificationService;
 use App\Support\EnrollmentWorkflow;
+use App\Support\PlanPricing;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -1902,47 +1903,40 @@ class EnrollmentController extends Controller
         $paymentMode = $request->input('payment_mode', '');
         $specializationId = (int) $request->input('specialization_id', 0);
 
-        $multiplier = match ($paymentMode) {
-            'Two Year'    => 2,
-            'Three Year'  => 3,
-            'Four Year'   => 4,
-            'Five Year'   => 5,
-            default       => 1, // One Year
-        };
-
         $options = [];
+        $specializationName = $specializationId > 0
+            ? Specialization::query()->whereKey($specializationId)->value('name')
+            : null;
 
         if ($planType === 1) {
-            // Normal plans
             $plans = NormalPlan::orderBy('coverage_lakh')->get();
             foreach ($plans as $plan) {
-                $amount    = round((float) $plan->yearly_amount * $multiplier, 2);
                 $options[] = [
                     'id'     => $plan->id,
                     'name'   => $plan->coverage_lakh . ' Lakh',
-                    'amount' => $amount,
+                    'amount' => PlanPricing::amountForPaymentMode($plan, $paymentMode),
                 ];
             }
         } elseif ($planType === 2) {
-            // High Risk plans
             $plans = HighRiskPlan::orderBy('coverage_lakh')->get();
             foreach ($plans as $plan) {
-                $amount    = round((float) $plan->yearly_amount * $multiplier, 2);
                 $options[] = [
                     'id'     => $plan->id,
                     'name'   => $plan->coverage_lakh . ' Lakh (High Risk)',
-                    'amount' => $amount,
+                    'amount' => PlanPricing::amountForPaymentMode($plan, $paymentMode),
                 ];
             }
         } elseif ($planType === 3) {
-            // Combo plans
             $plans = ComboPlan::orderBy('coverage_lakh')->get();
             foreach ($plans as $plan) {
-                $amount    = round((float) $plan->yearly_amount * $multiplier, 2);
+                if (!PlanPricing::comboPlanMatchesSpecialization($plan, $specializationId, $specializationName)) {
+                    continue;
+                }
+
                 $options[] = [
                     'id'     => $plan->id,
                     'name'   => $plan->coverage_lakh . ' Lakh (Combo)',
-                    'amount' => $amount,
+                    'amount' => PlanPricing::amountForPaymentMode($plan, $paymentMode),
                 ];
             }
         }
@@ -1959,8 +1953,16 @@ class EnrollmentController extends Controller
                 ->orderBy('id')
                 ->get();
 
+            $multiplier = match ($paymentMode) {
+                'Two Year' => 2,
+                'Three Year' => 3,
+                'Four Year' => 4,
+                'Five Year' => 5,
+                default => 1,
+            };
+
             foreach ($insurancePlans as $insurancePlan) {
-                $amount = round((float) $insurancePlan->amount_per_lakh * $multiplier, 2);
+                $amount = PlanPricing::amountForPaymentMode($insurancePlan, $paymentMode);
 
                 $options[] = [
                     'id' => $insurancePlan->id,
