@@ -27,6 +27,7 @@ return [
         'children' => [
             ['key' => 'sub-admin-management', 'title' => 'Sub-Admin Management', 'icon' => 'ri-list-check-2', 'route' => 'admin.admin-management.index', 'route_names' => ['admin.admin-management.index', 'admin.admin-management.create', 'admin.admin-management.edit']],
             ['key' => 'role-management', 'title' => 'Role Management', 'icon' => 'ri-list-check-2', 'route' => 'admin.admin-management.roles', 'route_names' => ['admin.admin-management.roles']],
+            ['key' => 'job-applications', 'title' => 'Job Applications', 'icon' => 'ri-briefcase-line', 'route' => 'admin.job-applications.index', 'route_names' => ['admin.job-applications.*']],
         ],
     ],
     [

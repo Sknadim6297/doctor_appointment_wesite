@@ -48,7 +48,7 @@ class PolicyReceiptController extends Controller
             ->orderBy('doctor_name')
             ->get();
 
-        return view('admin.policy_receipt.index', compact('policies', 'doctors'));
+        return view('admin.policy_receipt.index', compact('policies'));
     }
 
     public function doctors(Request $request)
@@ -57,8 +57,19 @@ class PolicyReceiptController extends Controller
         $searchText = $request->query('search');
 
         $policies = PolicyReceipt::query()
+            ->select([
+                'policy_receipts.*',
+                'enrollments.doctor_money_reciept_no',
+                'enrollments.doctor_money_reciept_year',
+            ])
+                ->select([
+                'policy_receipts.*',
+                'enrollments.doctor_money_reciept_no',
+                'enrollments.doctor_money_reciept_year',
+            ])
+                ->leftJoin('enrollments', 'enrollments.id', '=', 'policy_receipts.enrollment_id')
                 ->where(function ($q) {
-                $q->where('workflow_status', PolicyReceipt::STATUS_COMPLETED)
+                $q->where('policy_receipts.workflow_status', PolicyReceipt::STATUS_COMPLETED)
                     ->orWhereNull('workflow_status');
             })
                 ->where(function ($q) {
@@ -88,9 +99,58 @@ class PolicyReceiptController extends Controller
         return view('admin.policy_receipt.doctors', compact('policies', 'years', 'searchYear', 'searchText'));
     }
 
-    public function create()
+    /**
+     * Edit money receipt fields on enrollment (doctor-only). Enrollment resolved by legacy_user_id.
+     */
+    public function doctorMoneyReceiptEdit(int $enrollmentId)
     {
-        $doctorId = (int) request()->query('doctor', 0);
+        $enrollment = Enrollment::query()
+            ->where('id', $enrollmentId)
+            ->orWhere('legacy_user_id', $enrollmentId)
+            ->first();
+
+        if (!$enrollment) {
+            abort(404, 'Enrollment not found for this legacy user id.');
+        }
+
+        return view('admin.policy-receipt.legacy-edit', [
+            'enrollment' => $enrollment,
+            'doctorOnly' => true,
+        ]);
+    }
+
+    public function updateDoctorLegacy(Request $request, int $enrollmentId)
+    {
+        $enrollment = Enrollment::query()
+            ->where('id', $enrollmentId)
+            ->orWhere('legacy_user_id', $enrollmentId)
+            ->first();
+
+        if (!$enrollment) {
+            return back()->with('error', 'Enrollment not found.');
+        }
+
+        $request->validate([
+            'doctor_money_reciept_no' => ['nullable', 'string', 'max:50'],
+            'doctor_money_reciept_year' => ['nullable', 'string', 'max:10'],
+        ]);
+
+        $enrollment->doctor_money_reciept_no = $request->filled('doctor_money_reciept_no')
+            ? (string) $request->input('doctor_money_reciept_no')
+            : null;
+        $enrollment->doctor_money_reciept_year = $request->filled('doctor_money_reciept_year')
+            ? (string) $request->input('doctor_money_reciept_year')
+            : null;
+        $enrollment->save();
+
+        $redirectRoute = $request->boolean('doctor_only')
+            ? route('admin.doctors.show', $enrollment->id)
+            : route('admin.enrollment.show', $enrollment->id);
+
+        return redirect()
+            ->to($redirectRoute)
+            ->with('success', 'Money receipt updated.');
+    }
 
         $doctors = Enrollment::query()
             ->productionReady()
@@ -103,7 +163,7 @@ class PolicyReceiptController extends Controller
             ? route('admin.policy-receipt.legacy-store', $doctorId)
             : route('admin.policy-receipt.store');
 
-        return view('admin.policy_receipt.create', compact('doctors', 'selectedDoctor', 'submitRoute'));
+        return view('admin.policy_receipt.create', compact('doctors', 'selectedDoctor', 'submitRoute', 'doctorId'));
     }
 
     public function createForDoctor($doctorId)
@@ -167,6 +227,8 @@ class PolicyReceiptController extends Controller
                 'policy_start_date' => $data['policy_start_date'] ?? null,
                 'policy_end_date' => $data['policy_end_date'] ?? null,
                 'rcv_date' => $data['rcv_date'] ?? null,
+                'doctor_money_reciept_no' => $request->input('doctor_money_reciept_no'),
+                'doctor_money_reciept_year' => $request->input('doctor_money_reciept_year'),
             ]);
 
             $completedSteps = array_values(array_unique(array_merge(
@@ -269,8 +331,21 @@ class PolicyReceiptController extends Controller
     public function edit($id)
     {
         $policy = PolicyReceipt::findOrFail($id);
-        $doctors = Enrollment::query()->productionReady()->select('id', 'doctor_name', 'money_rc_no')->orderBy('doctor_name')->get();
-        return view('admin.policy_receipt.edit', compact('policy', 'doctors'));
+        $policy->load('enrollment');
+        return view('admin.policy_receipt.edit', compact('policy'));
+    }
+
+    /**
+     * Legacy edit screen (doctor-only money receipt fields), linked from doctor show.
+     */
+    public function legacyEdit($id)
+    {
+        $policy = PolicyReceipt::findOrFail($id);
+        $policy->load('enrollment');
+        return view('admin.policy_receipt.legacy-edit', [
+            'policy' => $policy,
+            'doctor_only' => true,
+        ]);
     }
 
     public function update(Request $request, $id)
@@ -434,6 +509,66 @@ class PolicyReceiptController extends Controller
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Doctor-only money receipt edit (enrollment detail / doctor profile).
+     */
+    public function doctorMoneyReceiptEdit(Enrollment $enrollment)
+    {
+        $enrollment->load('doctor');
+        return view('admin.policy-receipt.doctor-money-receipt-edit', compact('enrollment'));
+    }
+
+    public function updateDoctorMoneyReceiptFromEnrollment(Request $request, Enrollment $enrollment)
+    {
+        $data = $request->validate([
+            'doctor_money_reciept_no' => 'nullable|string|max:50',
+            'doctor_money_reciept_year' => 'nullable|string|max:10',
+        ]);
+        $enrollment->doctor_money_reciept_no = $data['doctor_money_reciept_no'] ?? null;
+        $enrollment->doctor_money_reciept_year = $data['doctor_money_reciept_year'] ?? null;
+        $enrollment->save();
+
+        return redirect()
+            ->route('admin.enrollment.show', $enrollment->id)
+            ->with('success', 'Money receipt updated.');
+    }
+
+    /**
+     * Legacy enrollment update route: only doctor money receipt fields (not policy receipt workflow).
+     */
+    public function legacyUpdateDoctorMoneyReceipt(Request $request, Enrollment $enrollment)
+    {
+        $data = $request->validate([
+            'doctor_money_reciept_no' => 'nullable|string|max:50',
+            'doctor_money_reciept_year' => 'nullable|string|max:10',
+        ]);
+        $enrollment->doctor_money_reciept_no = $data['doctor_money_reciept_no'] ?? null;
+        $enrollment->doctor_money_reciept_year = $data['doctor_money_reciept_year'] ?? null;
+        $enrollment->save();
+
+        return redirect()
+            ->route('admin.enrollment.show', $enrollment->id)
+            ->with('success', 'Money receipt updated.');
+    }
+
+    /**
+     * Doctor profile: edit money receipt for latest enrollment of doctor.
+     */
+    public function doctorMoneyReceiptEditForDoctor(Doctor $doctor)
+    {
+        $enrollment = Enrollment::query()
+            ->where('doctor_id', $doctor->id)
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$enrollment) {
+            return redirect()->route('admin.doctors.show', $doctor->id)
+                ->with('error', 'No enrollment found for this doctor.');
+        }
+
+        return view('admin.policy-receipt.doctor-money-receipt-edit', compact('doctor', 'enrollment'));
+    }
+
     private function validatedPolicyReceiptInput(Request $request): array
     {
         return $request->validate([

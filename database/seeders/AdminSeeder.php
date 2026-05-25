@@ -18,7 +18,7 @@ class AdminSeeder extends Seeder
         User::create([
             'name' => 'Super Admin',
             'email' => 'superadmin@mediforum.com',
-            'password' => Hash::make('password'),
+            'password' => Hash::make('admi123'),
             'role' => 'super_admin',
             'is_active' => true,
         ]);

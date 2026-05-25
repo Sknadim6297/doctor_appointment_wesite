@@ -147,9 +147,11 @@ class LegacyDoctorInsuranceImportService
             'coverage' => $coverageLakh,
             'coverage_id' => $coveragePlanId,
             'payment_mode' => $this->stringOrNull($row->payment_mode),
+            'policy_no' => $this->stringOrNull($row->policy_no ?? null),
             'service_amount' => $this->parseAmount($row->insurance_amount ?? null),
             'payment_amount' => $this->parseAmount($row->medeforum_amount ?? null),
             'policy_date' => $this->parseDate($row->policy_date ?? null) ?? $this->parseDate($row->enrollment_date ?? null),
+            'payment_cash_date' => $this->parseDate($row->policy_date ?? null) ?? $this->parseDate($row->enrollment_date ?? null),
             'renewal_date' => $this->parseDate($row->renewal_date ?? null),
             'last_renewal_date' => $this->parseDate($row->enrollment_date ?? null),
         ], static fn (mixed $value): bool => $value !== null);

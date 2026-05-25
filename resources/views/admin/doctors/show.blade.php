@@ -88,6 +88,18 @@
     .modal-input, .modal-textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.55rem 0.7rem; }
     .modal-textarea { min-height: 110px; resize: vertical; }
     .success-pane { text-align: center; color: #1e73a5; }
+    .mr-pill-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 0.375rem;
+        background: #ecfdf5;
+        color: #047857;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        border: 1px solid #a7f3d0;
+    }
 
     @media (max-width: 1024px) {
         .legacy-wrap { grid-template-columns: 1fr; }
@@ -121,7 +133,7 @@
             <div class="legacy-card">
                 <div class="legacy-card-body">
                     <div class="text-center">
-                        <img class="profile-photo mx-auto" src="{{ asset('assets/images/user-image.png') }}" alt="Doctor image">
+                        <img class="profile-photo mx-auto" src="{{ $doctor->profilePhotoUrl() ?? asset('assets/images/user-image.png') }}" alt="Doctor image">
 
                         <div class="quick-actions">
                             <a href="{{ route('admin.enrollment.legacy-edit', $doctor->id) }}" class="qbtn qbtn-green" title="Edit"><i class="ri-pencil-line"></i> Edit</a>
@@ -157,8 +169,8 @@
                     </div>
 
                     <div class="doctor-profile-meta">
-                        @if(filled($doctor->money_rc_no))
-                            <p class="meta-item text-center"><b>Money Receipt No:</b> {{ $doctor->money_rc_no }}</p>
+                        @if($doctor->displayMoneyReceiptNo())
+                            <p class="meta-item text-center"><b>Money Receipt No:</b> {{ $doctor->displayMoneyReceiptNo() }}</p>
                         @endif
                         @if(filled($doctor->customer_id_no))
                             <p class="meta-item text-center"><b>Membership No:</b> {{ $doctor->customer_id_no }}</p>
@@ -189,7 +201,7 @@
                         @endif
                     @endif
                     
-                    <div class="about-row"><b>Policy Date</b><div>{{ optional($doctor->payment_cash_date)->format('d/m/Y') ?? 'N/A' }}</div></div>
+                    <div class="about-row"><b>Policy Date</b><div>{{ optional($doctor->displayPolicyDate())->format('d/m/Y') ?? 'N/A' }}</div></div>
                 </div>
             </div>
         </div>
@@ -210,20 +222,30 @@
             <div id="tab-details" class="legacy-tab-panel">
                 <div class="kv-grid">
                     <div>
-                        <div class="kv-item"><div class="kv-key">Broker/Agent name</div><div class="kv-val">{{ $doctor->agent_name ?? 'N/A' }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Agent phone No</div><div class="kv-val">{{ $doctor->agent_phone_no ?? 'N/A' }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Policy No</div><div class="kv-val">{{ $doctor->money_rc_no ?? 'N/A' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Broker/Agent name</div><div class="kv-val">{{ $doctor->display('agent_name', 'N/A') }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Agent phone No</div><div class="kv-val">{{ $doctor->display('agent_phone_no', 'N/A') }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Policy No</div><div class="kv-val">{{ $doctor->displayPolicyNo() ?? 'N/A' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Money Receipt No</div>
+                            <div class="kv-val">
+                                @if($doctor->displayMoneyReceiptNo())
+                                    <span class="mr-pill-badge">{{ $doctor->displayMoneyReceiptNo() }}</span>
+                                @else
+                                    <span class="text-slate-400">—</span>
+                                @endif
+                                <a href="{{ route('admin.enrollment.doctor-money-receipt.edit', $doctor->id) }}" class="text-blue-600 hover:underline font-semibold ml-1">Edit</a>
+                            </div>
+                        </div>
                         <div class="kv-item"><div class="kv-key">Address</div><div class="kv-val">{{ $doctor->doctor_address ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Date of birth</div><div class="kv-val">{{ optional($doctor->dob)->format('d/m/Y') ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Qualification</div><div class="kv-val">{{ $doctor->formattedQualification() ?? 'Not Provided' }}</div></div>
                     </div>
                     <div>
                         <div class="kv-item"><div class="kv-key">Qualification year</div><div class="kv-val">{{ $doctor->formattedQualificationYears() ?? 'Not Provided' }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Medical Registration</div><div class="kv-val">{{ $doctor->medical_registration_no ?: 'Not Provided' }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Year of Registration</div><div class="kv-val">{{ $doctor->year_of_reg ?: 'Not Provided' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Medical Registration</div><div class="kv-val">{{ $doctor->displayMedicalRegistrationNo() ?? 'Not Provided' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Year of Registration</div><div class="kv-val">{{ $doctor->displayYearOfReg() ?? 'Not Provided' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Payment Mode</div><div class="kv-val">{{ $doctor->payment_mode ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Plan</div><div class="kv-val">{{ $planName }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Payment date</div><div class="kv-val">{{ optional($doctor->payment_cash_date)->format('d/m/Y') ?? 'N/A' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Payment date</div><div class="kv-val">{{ optional($doctor->displayPaymentDate())->format('d/m/Y') ?? 'N/A' }}</div></div>
                     </div>
                 </div>
             </div>
@@ -507,12 +529,12 @@
                     <tbody>
                         <tr>
                             <td>1</td>
-                            <td>{{ $doctor->money_rc_no ?? 'Pending' }}</td>
+                            <td>{{ $doctor->displayMoneyReceiptNo() ?? 'Pending' }}</td>
                             <td>{{ $doctor->doctor_name ?? 'N/A' }}</td>
                             <td>{{ $doctor->customer_id_no ?? 'N/A' }}</td>
                             <td>Rs. {{ number_format((float)($doctor->payment_amount ?? 0), 0) }}</td>
-                            <td>{{ optional($doctor->payment_cash_date)->format('Y') ?? 'N/A' }}</td>
-                            <td>{{ optional($doctor->payment_cash_date)->format('d/m/Y') ?? 'N/A' }}</td>
+                            <td>{{ optional($doctor->displayPaymentDate())->format('Y') ?? 'N/A' }}</td>
+                            <td>{{ optional($doctor->displayPaymentDate())->format('d/m/Y') ?? 'N/A' }}</td>
                             <td>Rs. {{ number_format((float)($doctor->service_amount ?? 0), 0) }}</td>
                             <td>Rs. {{ number_format((float)(($doctor->payment_amount ?? 0) - ($doctor->service_amount ?? 0)), 0) }}</td>
                             <td>{{ $planName }}</td>
@@ -520,7 +542,7 @@
                             <td>{{ $doctor->bank_name ?? 'N/A' }}</td>
                             <td>{{ $doctor->payment_remarks ?? 'N/A' }}</td>
                             <td>
-                                @if($doctor->money_rc_no)
+                                @if($doctor->displayMoneyReceiptNo())
                                     <div class="flex flex-wrap gap-1">
                                         <a href="{{ route('admin.receipts.view', $doctor->id) }}" target="_blank" class="qbtn qbtn-green" title="View"><i class="ri-eye-line"></i></a>
                                         <a href="{{ route('admin.receipts') }}?search={{ urlencode($doctor->doctor_name ?? '') }}" class="qbtn qbtn-blue" title="Edit"><i class="ri-pencil-line"></i></a>

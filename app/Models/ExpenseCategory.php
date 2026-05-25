@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ExpenseCategory extends Model
 {
@@ -12,6 +13,11 @@ class ExpenseCategory extends Model
         'created_by',
         'updated_by',
     ];
+
+    public function expenses(): HasMany
+    {
+        return $this->hasMany(Expense::class, 'expense_category_id');
+    }
 
     public function creator(): BelongsTo
     {

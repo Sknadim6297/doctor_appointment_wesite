@@ -306,7 +306,7 @@
                         @endphp
                         <tr>
                             <td><b>{{ $receipts->firstItem() + $loop->index }}</b></td>
-                            <td><b>{{ $receipt->money_rc_no ?? '—' }}</b></td>
+                            <td><b>{{ $receipt->displayMoneyReceiptNo() ?? '—' }}</b></td>
                             <td>
                                 <b>
                                     <a href="{{ route('admin.doctors.show', $receipt->id) }}" target="_blank">{{ $receipt->doctor_name ?? '—' }}</a>

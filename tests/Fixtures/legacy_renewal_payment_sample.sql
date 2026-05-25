@@ -1,0 +1,3 @@
+INSERT INTO `legacy_tbl_renewal_payment` (`id`, `doctor_id`, `payment_type`, `cheque_no`, `bank_name`, `bank_branch`, `transaction_no`, `payment_date`, `payment_amount`, `payment_mode`, `money_reciept_no`, `checque_file`, `policy_no`, `remarks`, `plan_id`, `from_old`) VALUES
+(9619, 9853, 'cash', '', '', '', '', '2023-03-30', '10000', '0', NULL, NULL, NULL, NULL, 0, 'no'),
+(9620, 9663, 'cash', '', '', '', NULL, '2017-06-12', '3900', 'One Year', NULL, NULL, NULL, NULL, 3, 'yes');

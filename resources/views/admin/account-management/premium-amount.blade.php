@@ -194,7 +194,7 @@
             'commission' => $commissionAmount,
             'total' => $totalAmount,
             'coverage' => $coverageLabel,
-            'renewal' => optional($doctor->created_at)->copy()?->addYear()?->format('d/m/Y') ?? 'N/A',
+            'renewal' => optional($doctor->last_renewal_date ?? $doctor->displayPolicyDate())->format('d/m/Y') ?? 'N/A',
         ];
     };
 @endphp
@@ -292,7 +292,7 @@
                                     <td><input type="checkbox" name="record" value="{{ $doctor->id }}"></td>
                                     <td style="font-size: 0.85em"><b>{{ $doctors->firstItem() + $loop->index }}</b></td>
                                     <td style="font-size: 0.85em"><b><a target="_blank" href="{{ route('admin.doctors.show', $doctor->id) }}?tab=membership">{{ $doctor->doctor_name ?? 'N/A' }}</a></b></td>
-                                    <td style="font-size: 0.85em"><b>{{ $doctor->money_rc_no ?? 'N/A' }}</b></td>
+                                    <td style="font-size: 0.85em"><b>{{ $doctor->displayPolicyNo() ?? 'N/A' }}</b></td>
                                     <td style="font-size: 0.85em"><span class="premium-pill premium-pill-coverage">{{ $amount['coverage'] }}</span></td>
                                     <td style="font-size: 0.85em"><b>Rs.{{ number_format($amount['premium'], 0) }}/-</b></td>
                                     <td style="font-size: 0.85em"><b>Rs. {{ number_format($amount['gst'], 0) }}/-</b></td>
@@ -375,7 +375,7 @@
                                 <tr>
                                     <td style="font-size: 0.85em"><b>{{ $loop->iteration }}</b></td>
                                     <td style="font-size: 0.85em"><b>{{ $doctor->doctor_name ?? 'N/A' }}</b></td>
-                                    <td style="font-size: 0.85em"><b>{{ $doctor->money_rc_no ?? 'N/A' }}</b></td>
+                                    <td style="font-size: 0.85em"><b>{{ $doctor->displayPolicyNo() ?? 'N/A' }}</b></td>
                                     <td style="font-size: 0.85em"><b>Rs.{{ number_format($amount['premium'], 0) }}/-</b></td>
                                     <td style="font-size: 0.85em"><b>Rs. {{ number_format($amount['gst'], 0) }}/-</b></td>
                                     <td style="font-size: 0.85em"><b>Rs. {{ number_format($amount['total'], 0) }}/-</b></td>

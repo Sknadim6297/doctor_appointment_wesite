@@ -34,6 +34,11 @@
                     <td class="font-semibold">{{ $doctors->firstItem() + $loop->index }}</td>
                     <td>
                         <div class="font-semibold text-slate-800">{{ $doctor->doctor_name ?? '—' }}</div>
+                        @if(!empty($doctor->doctor_money_reciept_no) || !empty($doctor->money_rc_no))
+                            <div class="text-xs text-emerald-700 font-medium mt-0.5">
+                                MR {{ $doctor->doctor_money_reciept_no ?? $doctor->money_rc_no }}@if(!empty($doctor->doctor_money_reciept_year)) ({{ $doctor->doctor_money_reciept_year }})@endif
+                            </div>
+                        @endif
                         <div class="text-xs text-slate-500">{{ $doctor->mobile1 ?? '—' }}</div>
                     </td>
                     <td>

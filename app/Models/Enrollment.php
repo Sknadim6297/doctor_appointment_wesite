@@ -19,6 +19,9 @@ class Enrollment extends Model
         'legacy_user_id',
         'customer_id_no',
         'money_rc_no',
+        'doctor_money_reciept_no',
+        'doctor_money_reciept_year',
+        'policy_no',
         'agent_name',
         'agent_phone_no',
         'doctor_name',
@@ -199,6 +202,23 @@ class Enrollment extends Model
     }
 
     /**
+     * Enrollments with account/premium listing data (legacy imports use policy_no and payment_amount).
+     */
+    public function scopeWithAccountListing(Builder $query): Builder
+    {
+        return $query->where(function (Builder $inner): void {
+            $inner->where(function (Builder $receipt): void {
+                $receipt->whereNotNull('money_rc_no')->where('money_rc_no', '!=', '');
+            })
+                ->orWhereNotNull('doctor_money_reciept_no')
+                ->orWhere(function (Builder $policy): void {
+                    $policy->whereNotNull('policy_no')->where('policy_no', '!=', '');
+                })
+                ->orWhere('payment_amount', '>', 0);
+        });
+    }
+
+    /**
      * Enrollments still in the internal CRM pipeline (not yet active doctors).
      */
     public function scopeEnrollmentPipeline(Builder $query): Builder
@@ -264,6 +284,16 @@ class Enrollment extends Model
     public function latestPolicyReceipt(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(PolicyReceipt::class, 'enrollment_id')->latestOfMany();
+    }
+
+    public function renewalHistories(): HasMany
+    {
+        return $this->hasMany(RenewalHistory::class)->orderByDesc('renewed_date')->orderByDesc('id');
+    }
+
+    public function latestRenewalHistory(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(RenewalHistory::class)->latestOfMany('renewed_date');
     }
 
     public function planLabel(): string
@@ -377,7 +407,7 @@ class Enrollment extends Model
 
     public function formattedQualification(): ?string
     {
-        $qualification = $this->qualification;
+        $qualification = $this->resolveDisplayValue('qualification');
 
         if (is_string($qualification)) {
             $decoded = json_decode($qualification, true);
@@ -405,7 +435,7 @@ class Enrollment extends Model
 
     public function formattedQualificationYears(): ?string
     {
-        $years = $this->qualification_year;
+        $years = $this->resolveDisplayValue('qualification_year');
 
         if (is_string($years)) {
             $decoded = json_decode($years, true);
@@ -522,9 +552,16 @@ class Enrollment extends Model
         return true;
     }
 
+    public function displayMedicalRegistrationNo(): ?string
+    {
+        $value = $this->resolveDisplayValue('medical_registration_no');
+
+        return $value !== null && trim((string) $value) !== '' ? trim((string) $value) : null;
+    }
+
     public function formattedRegistrationLine(): ?string
     {
-        $registrationNo = trim((string) ($this->medical_registration_no ?? ''));
+        $registrationNo = trim((string) ($this->displayMedicalRegistrationNo() ?? ''));
         $registrationYear = trim((string) ($this->displayYearOfReg() ?? ''));
 
         if ($registrationNo !== '' && $registrationYear !== '') {
@@ -631,5 +668,70 @@ class Enrollment extends Model
         }
 
         return $rows;
+    }
+
+    public function displayMoneyReceiptNo(): ?string
+    {
+        if (filled($this->doctor_money_reciept_no)) {
+            $label = (string) $this->doctor_money_reciept_no;
+            if (filled($this->doctor_money_reciept_year)) {
+                $label .= ' ('.$this->doctor_money_reciept_year.')';
+            }
+
+            return $label;
+        }
+
+        return filled($this->money_rc_no) ? (string) $this->money_rc_no : null;
+    }
+
+    public function displayPolicyNo(): ?string
+    {
+        if (filled($this->policy_no)) {
+            return (string) $this->policy_no;
+        }
+
+        $receipt = $this->relationLoaded('latestPolicyReceipt')
+            ? $this->latestPolicyReceipt
+            : $this->latestPolicyReceipt()->first();
+
+        return filled($receipt?->policy_no) ? (string) $receipt->policy_no : null;
+    }
+
+    public function displayPaymentDate(): ?\Carbon\Carbon
+    {
+        if ($this->payment_cash_date !== null) {
+            return $this->payment_cash_date;
+        }
+
+        return $this->policy_date ?? $this->last_renewal_date;
+    }
+
+    public function displayPolicyDate(): ?\Carbon\Carbon
+    {
+        return $this->policy_date ?? $this->last_renewal_date;
+    }
+
+    public function profilePhotoUrl(): ?string
+    {
+        $document = $this->doctorDocuments()
+            ->where('is_active', true)
+            ->whereNotNull('document_file')
+            ->where(function ($query) {
+                $query->where('mime_type', 'like', 'image/%')
+                    ->orWhere('document_file', 'like', '%.jpg')
+                    ->orWhere('document_file', 'like', '%.jpeg')
+                    ->orWhere('document_file', 'like', '%.png')
+                    ->orWhere('document_file', 'like', '%.webp');
+            })
+            ->orderByDesc('id')
+            ->value('document_file');
+
+        if (! filled($document)) {
+            return null;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->exists($document)
+            ? \Illuminate\Support\Facades\Storage::url($document)
+            : null;
     }
 }

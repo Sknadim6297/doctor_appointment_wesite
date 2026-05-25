@@ -225,7 +225,7 @@ class DoctorController extends Controller
                 fputcsv($output, [
                     $slNo++,
                     $doctor->doctor_name ?? 'N/A',
-                    $doctor->money_rc_no ?? 'N/A',
+                    $doctor->displayPolicyNo() ?? 'N/A',
                     filled($doctor->coverage_id) ? ((string) $doctor->coverage_id . ' Lakh') : 'N/A',
                     'Rs. ' . number_format($premiumAmount, 0) . '/-',
                     'Rs. ' . number_format($gstAmount, 0) . '/-',
@@ -246,7 +246,10 @@ class DoctorController extends Controller
      */
     public function show($id)
     {
-        $doctor = Enrollment::query()->productionReady()->with(['specialization', 'creator'])->findOrFail($id);
+        $doctor = Enrollment::query()
+            ->productionReady()
+            ->with(['specialization', 'creator', 'latestPolicyReceipt'])
+            ->findOrFail($id);
 
         $this->recordAccess->assertCanAccessRecord(
             request()->user(),
@@ -398,6 +401,51 @@ class DoctorController extends Controller
         ];
 
         return view('admin.doctors.incomplete-documents', compact('doctors', 'specializations', 'plans'));
+    }
+
+    /**
+     * Doctor-only edit for money receipt fields on enrollment (by legacy_user_id).
+     */
+    public function moneyReceiptLegacyEdit(int $enrollmentId)
+    {
+        $enrollment = Enrollment::query()
+            ->where('id', $enrollmentId)
+            ->orWhere('legacy_user_id', $enrollmentId)
+            ->first();
+
+        if (!$enrollment) {
+            abort(404, 'Enrollment not found for this legacy user id.');
+        }
+
+        return view('admin.doctors.money-receipt-legacy-edit', [
+            'enrollment' => $enrollment,
+            'doctorOnly' => true,
+        ]);
+    }
+
+    public function updateMoneyReceiptLegacy(Request $request, int $enrollmentId)
+    {
+        $enrollment = Enrollment::query()
+            ->where('id', $enrollmentId)
+            ->orWhere('legacy_user_id', $enrollmentId)
+            ->first();
+
+        if (!$enrollment) {
+            return back()->with('error', 'Enrollment not found.');
+        }
+
+        $request->validate([
+            'doctor_money_reciept_no' => ['nullable', 'string', 'max:50'],
+            'doctor_money_reciept_year' => ['nullable', 'string', 'max:10'],
+        ]);
+
+        $enrollment->doctor_money_reciept_no = $request->input('doctor_money_reciept_no');
+        $enrollment->doctor_money_reciept_year = $request->input('doctor_money_reciept_year');
+        $enrollment->save();
+
+        return redirect()
+            ->route('admin.enrollment.show', $enrollment->id)
+            ->with('success', 'Money receipt updated.');
     }
 
     /**
@@ -613,9 +661,9 @@ class DoctorController extends Controller
                 fputcsv($output, [
                     $slNo++,
                     $receipt->doctor_name ?? 'N/A',
-                    $receipt->money_rc_no ?? 'N/A',
+                    $receipt->displayMoneyReceiptNo() ?? 'N/A',
                     $cheque,
-                    optional($receipt->created_at)->format('d/m/Y') ?? 'N/A',
+                    optional($receipt->displayPaymentDate())->format('d/m/Y') ?? 'N/A',
                     filled($receipt->payment_amount) ? 'Rs. ' . number_format((float) $receipt->payment_amount, 0) . '/-' : 'N/A',
                     'Enrollment',
                 ]);
@@ -1225,9 +1273,8 @@ class DoctorController extends Controller
 
         $query = Enrollment::query()
             ->productionReady()
+            ->withAccountListing()
             ->with('specialization')
-            ->whereNotNull('money_rc_no')
-            ->where('money_rc_no', '!=', '')
             ->orderByDesc('created_at');
 
         if ($searchMonth > 0) {
@@ -1242,8 +1289,13 @@ class DoctorController extends Controller
             $query->where(function ($q) use ($searchText) {
                 $q->where('doctor_name', 'like', '%' . $searchText . '%')
                     ->orWhere('money_rc_no', 'like', '%' . $searchText . '%')
+                    ->orWhere('policy_no', 'like', '%' . $searchText . '%')
                     ->orWhere('customer_id_no', 'like', '%' . $searchText . '%')
                     ->orWhere('mobile1', 'like', '%' . $searchText . '%');
+
+                if (ctype_digit($searchText)) {
+                    $q->orWhere('doctor_money_reciept_no', (int) $searchText);
+                }
             });
         }
 
@@ -1310,9 +1362,8 @@ class DoctorController extends Controller
         $query = $this->recordAccess->applyOwnedScope(
             Enrollment::query()
                 ->productionReady()
-                ->with('specialization')
-                ->whereNotNull('money_rc_no')
-                ->where('money_rc_no', '!=', ''),
+                ->withAccountListing()
+                ->with('specialization'),
             $request->user()
         )->orderByDesc('created_at');
 
