@@ -9,7 +9,8 @@
         <i class="ri-arrow-left-line"></i>
         Back to Doctor Profile
     </a>
-    <a href="{{ route('admin.enrollment.show', $enrollment->id) }}" class="text-sm text-slate-500 hover:text-slate-700 mb-4">Enrollment #{{ $enrollment->id }}</a>
+    <span class="text-sm text-slate-500 mb-4">Enrollment #{{ $enrollment->id }}</span>
+</div>
 
 <div class="max-w-xl mx-auto">
     <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

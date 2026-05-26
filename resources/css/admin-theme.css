@@ -540,3 +540,166 @@ body {
     white-space: normal;
     word-break: break-word;
 }
+
+/* ── Pagination (Mediforum) ───────────────────────────────────────── */
+.mf-pagination-wrap {
+    margin-top: 1.25rem;
+}
+
+.mf-pagination {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 0.75rem;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+@media (min-width: 640px) {
+    .mf-pagination {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 1.25rem;
+    }
+}
+
+.mf-pagination__summary {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--muted, #64748b);
+    font-family: var(--font-body, 'Manrope', sans-serif);
+}
+
+.mf-pagination__summary strong {
+    font-weight: 600;
+    color: var(--ink, #0f172a);
+}
+
+.mf-pagination__mobile {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+    .mf-pagination__mobile {
+        display: none;
+    }
+}
+
+.mf-pagination__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--brand, #1d4ed8);
+    background: #f8fafc;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 0.5rem;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.mf-pagination__btn:hover:not(.mf-pagination__btn--disabled) {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1e40af;
+}
+
+.mf-pagination__btn--disabled {
+    color: #94a3b8;
+    background: #f1f5f9;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.mf-pagination__list {
+    display: none;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+@media (min-width: 640px) {
+    .mf-pagination__list {
+        display: flex;
+    }
+}
+
+.mf-pagination__control,
+.mf-pagination__page,
+.mf-pagination__ellipsis {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.25rem;
+    height: 2.25rem;
+    padding: 0 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    font-family: var(--font-display, 'Space Grotesk', sans-serif);
+    line-height: 1;
+    border-radius: 0.5rem;
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.mf-pagination__control {
+    color: var(--muted, #64748b);
+    background: #fff;
+    border: 1px solid var(--line, #e2e8f0);
+}
+
+.mf-pagination__control:hover:not(.mf-pagination__control--disabled) {
+    color: var(--brand, #1d4ed8);
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.mf-pagination__control--disabled {
+    color: #cbd5e1;
+    background: #f8fafc;
+    border-color: #f1f5f9;
+    cursor: not-allowed;
+}
+
+.mf-pagination__page {
+    color: var(--ink, #334155);
+    background: #fff;
+    border: 1px solid transparent;
+}
+
+.mf-pagination__page:hover {
+    color: var(--brand, #1d4ed8);
+    background: #f8fafc;
+    border-color: var(--line, #e2e8f0);
+}
+
+.mf-pagination__page--active {
+    color: #fff;
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    border-color: #1d4ed8;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+    cursor: default;
+}
+
+.mf-pagination__ellipsis {
+    min-width: 2rem;
+    color: #94a3b8;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    border: none;
+    background: transparent;
+}

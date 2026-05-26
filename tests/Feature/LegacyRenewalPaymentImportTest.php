@@ -43,7 +43,7 @@ class LegacyRenewalPaymentImportTest extends TestCase
 
         $sync = app(LegacyRenewalPaymentImportService::class)->sync(false, false, false);
         $this->assertSame(1, $sync['synced']);
-        $this->assertSame(0, $sync['skipped']);
+        $this->assertSame(1, $sync['skipped']);
 
         $enrollment->refresh();
         $this->assertSame('2023-03-30', $enrollment->last_renewal_date?->format('Y-m-d'));
@@ -52,7 +52,7 @@ class LegacyRenewalPaymentImportTest extends TestCase
         $history = RenewalHistory::where('enrollment_id', $enrollment->id)->first();
         $this->assertNotNull($history);
         $this->assertSame('2023-03-30', $history->renewed_date->format('Y-m-d'));
-        $this->assertSame('yearly', $history->plan_type);
+        $this->assertSame(1, (int) $history->plan_type);
 
         $receipt = PolicyReceipt::where('enrollment_id', $enrollment->id)->first();
         $this->assertNotNull($receipt);
@@ -64,11 +64,22 @@ class LegacyRenewalPaymentImportTest extends TestCase
         $fixture = base_path('tests/fixtures/legacy_renewal_payment_sample.sql');
         $this->createLegacyTableIfNeeded();
 
-        $before = \Illuminate\Support\Facades\DB::table('legacy_tbl_renewal_payment')->count();
+        app(LegacyRenewalPaymentImportService::class)->loadSqlFile($fixture, true);
 
-        app(LegacyRenewalPaymentImportService::class)->loadSqlFile($fixture, false);
+        Enrollment::create([
+            'legacy_user_id' => 9853,
+            'customer_id_no' => 'CUST-9853',
+            'doctor_name' => 'Test Doctor',
+            'status' => 'active',
+            'workflow_status' => 'completed',
+            'current_step' => 4,
+        ]);
 
-        $this->assertSame($before, DB::table('legacy_tbl_renewal_payment')->count());
+        $before = RenewalHistory::count();
+
+        app(LegacyRenewalPaymentImportService::class)->sync(true, false, false);
+
+        $this->assertSame($before, RenewalHistory::count());
     }
 
     public function test_plan_id_maps_to_plan_types(): void
@@ -78,9 +89,9 @@ class LegacyRenewalPaymentImportTest extends TestCase
         $method = $ref->getMethod('normalizePlanType');
         $method->setAccessible(true);
 
-        $this->assertSame('insurance', $method->invokeArgs($service, [1, null]));
-        $this->assertSame('combo', $method->invokeArgs($service, [2, null]));
-        $this->assertSame('yearly', $method->invokeArgs($service, [3, null]));
+        $this->assertSame(1, $method->invokeArgs($service, [1, null]));
+        $this->assertSame(2, $method->invokeArgs($service, [2, null]));
+        $this->assertSame(3, $method->invokeArgs($service, [3, null]));
     }
 
     private function createLegacyTableIfNeeded(bool $truncate = false): void

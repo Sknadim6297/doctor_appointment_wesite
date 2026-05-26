@@ -177,14 +177,7 @@
         </table>
     </div>
 
-    <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p class="text-sm text-slate-600">
-            Showing {{ $posts->firstItem() ?? 0 }} to {{ $posts->lastItem() ?? 0 }} of {{ $posts->total() }} entries
-        </p>
-        <div>
-            {{ $posts->links() }}
-        </div>
-    </div>
+    {{ $posts->withQueryString()->links() }}
 
     <div
         x-show="modalOpen"

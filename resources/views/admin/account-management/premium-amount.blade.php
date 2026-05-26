@@ -337,13 +337,8 @@
                     </table>
                 </div>
 
-                <div class="row no-print" style="margin-top: 10px;">
-                    <div class="col-sm-5">
-                        Showing {{ $doctors->firstItem() ?? 0 }} to {{ $doctors->lastItem() ?? 0 }} of {{ $doctors->total() }} entries
-                    </div>
-                    <div class="col-sm-7 text-right">
-                        {{ $doctors->links() }}
-                    </div>
+                <div class="no-print">
+                    {{ $doctors->withQueryString()->links() }}
                 </div>
 
                 <div id="print_content" style="display:none;">

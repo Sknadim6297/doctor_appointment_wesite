@@ -125,6 +125,7 @@ class EnrollmentRecordAccessTest extends TestCase
     private function createProductionReadyDoctor(User $owner, string $membershipNo, string $name): Enrollment
     {
         return Enrollment::create([
+            'legacy_user_id' => random_int(10000, 99999),
             'customer_id_no' => $membershipNo,
             'doctor_name' => $name,
             'mobile1' => '9991111111',

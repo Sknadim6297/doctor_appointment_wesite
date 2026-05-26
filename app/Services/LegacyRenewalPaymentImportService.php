@@ -50,9 +50,13 @@ class LegacyRenewalPaymentImportService
 
             try {
                 DB::unprepared($statement);
-                $loaded++;
+                $loaded += max(1, preg_match_all('/\)\s*,\s*\(/', $statement) + 1);
             } catch (\Throwable $e) {
-                // skip bad rows
+                throw new \RuntimeException(
+                    'Failed executing legacy_tbl_renewal_payment INSERT: ' . $e->getMessage(),
+                    (int) $e->getCode(),
+                    $e
+                );
             }
         }
 
@@ -109,6 +113,7 @@ class LegacyRenewalPaymentImportService
             }
 
             $planType = $this->normalizePlanType($row->plan_id ?? null, $row->payment_mode ?? null);
+            $paymentMode = $this->stringOrNull($row->payment_mode ?? null);
             $amount = $this->parseAmount($row->payment_amount ?? null);
             $policyNo = $this->stringOrNull($row->policy_no ?? null);
             $planCode = $this->mapPlanIdToEnrollmentPlan($row->plan_id ?? null);
@@ -125,30 +130,26 @@ class LegacyRenewalPaymentImportService
                 ->orderByDesc('id')
                 ->first();
 
-            $nextRenewal = $this->nextRenewalDate($renewedDate, $row->payment_mode ?? null);
+            $historyPayload = [
+                'renewed_date' => $renewedDate,
+                'medeforum_amount' => $amount,
+                'plan_type' => $planType,
+                'payment_mode' => $paymentMode,
+                'policy_no' => $policyNo,
+                'legacy_doctor_id' => $legacyDoctorId,
+            ];
 
             if ($history) {
-                $history->update([
-                    'renewed_date' => $renewedDate,
-                    'medeforum_amount' => $amount,
-                    'plan_type' => $planType,
-                    'policy_no' => $policyNo,
-                    'next_renewal_date' => $nextRenewal,
-                ]);
+                $history->update($historyPayload);
             } else {
-                $this->renewalHistory->create([
+                $this->renewalHistory->create(array_merge($historyPayload, [
                     'enrollment_id' => $enrollment->id,
-                    'renewed_date' => $renewedDate,
-                    'medeforum_amount' => $amount,
-                    'plan_type' => $planType,
-                    'policy_no' => $policyNo,
-                    'next_renewal_date' => $nextRenewal,
-                ]);
+                ]));
             }
 
             $enrollmentUpdates = [
-                'last_renewal_date' => $renewedDate->format('Y-m-d'),
-                'renewal_date' => $renewedDate->format('Y-m-d'),
+                'last_renewal_date' => $renewedDate,
+                'renewal_date' => $renewedDate,
             ];
             if ($planCode !== null) {
                 $enrollmentUpdates['plan'] = $planCode;
@@ -166,13 +167,12 @@ class LegacyRenewalPaymentImportService
                 ->first();
 
             $receiptUpdates = [
-                'last_renewed_date' => $renewedDate->format('Y-m-d'),
+                'last_renewed_date' => $renewedDate,
                 'workflow_status' => PolicyReceipt::STATUS_COMPLETED,
             ];
             if ($policyNo !== null) {
                 $receiptUpdates['policy_no'] = $policyNo;
             }
-            $receiptUpdates['renewal_plan'] = $this->mapPlanTypeToRenewalPlanEnum($planType);
             if (Schema::hasColumn('policy_receipts', 'plan_amount')) {
                 $receiptUpdates['plan_amount'] = $amount;
             }
@@ -314,53 +314,17 @@ class LegacyRenewalPaymentImportService
         return 1;
     }
 
-    protected function normalizePlanType(mixed $planId, mixed $paymentMode): string
+    protected function normalizePlanType(mixed $planId, mixed $paymentMode): ?int
     {
         if (is_numeric($planId)) {
-            $map = [
-                1 => RenewalHistory::PLAN_TYPE_INSURANCE,
-                2 => RenewalHistory::PLAN_TYPE_COMBO,
-                3 => RenewalHistory::PLAN_TYPE_YEARLY,
-            ];
-
             $id = (int) $planId;
 
-            if (isset($map[$id])) {
-                return $map[$id];
+            if (in_array($id, [1, 2, 3], true)) {
+                return $id;
             }
         }
 
-        $mode = strtolower(trim((string) ($paymentMode ?? '')));
-
-        if (str_contains($mode, 'yearly') || str_contains($mode, 'one year')) {
-            return RenewalHistory::PLAN_TYPE_YEARLY;
-        }
-        if (str_contains($mode, 'two year') || str_contains($mode, '2 year')) {
-            return RenewalHistory::PLAN_TYPE_TWO_YEAR;
-        }
-        if (str_contains($mode, 'three year') || str_contains($mode, '3 year')) {
-            return RenewalHistory::PLAN_TYPE_THREE_YEAR;
-        }
-        if (str_contains($mode, 'four year') || str_contains($mode, '4 year')) {
-            return RenewalHistory::PLAN_TYPE_FOUR_YEAR;
-        }
-        if (str_contains($mode, 'five year') || str_contains($mode, '5 year')) {
-            return RenewalHistory::PLAN_TYPE_FIVE_YEAR;
-        }
-
-        return RenewalHistory::PLAN_TYPE_INSURANCE;
-    }
-
-    protected function planLabelFromType(string $planType): string
-    {
-        return match ($planType) {
-            RenewalHistory::PLAN_TYPE_YEARLY => 'yearly',
-            RenewalHistory::PLAN_TYPE_TWO_YEAR => 'two_year',
-            RenewalHistory::PLAN_TYPE_THREE_YEAR => 'three_year',
-            RenewalHistory::PLAN_TYPE_FOUR_YEAR => 'four_year',
-            RenewalHistory::PLAN_TYPE_FIVE_YEAR => 'five_year',
-            default => $planType,
-        };
+        return 1;
     }
 
     protected function parseDate(?string $value): ?string

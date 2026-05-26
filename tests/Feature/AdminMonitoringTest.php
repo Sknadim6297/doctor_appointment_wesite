@@ -68,7 +68,7 @@ class AdminMonitoringTest extends TestCase
 
         $this->assertDatabaseHas('admin_privileges', [
             'user_id' => $user->id,
-            'page_key' => 'enrollment',
+            'page_key' => 'doctors',
             'action_key' => 'view',
             'is_allowed' => true,
         ]);
@@ -114,9 +114,16 @@ class AdminMonitoringTest extends TestCase
         );
 
         $doctor = Enrollment::create([
+            'legacy_user_id' => 88001,
             'doctor_name' => 'Dr. Asha',
             'customer_id_no' => 'MEM-1001',
             'created_by' => $owner->id,
+            'agent_id' => $owner->id,
+            'status' => 'approved',
+            'workflow_status' => 'completed',
+            'is_step_incomplete' => false,
+            'approved_by' => $owner->id,
+            'approved_at' => now(),
         ]);
 
         $response = $this->actingAs($actor)->get(route('admin.doctors.show', $doctor));
@@ -269,7 +276,7 @@ class AdminMonitoringTest extends TestCase
             'name' => 'Admin Reviewer',
             'first_name' => 'Admin',
             'last_name' => 'Reviewer',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'phone' => '9000000707',
             'is_active' => true,
         ]);
@@ -315,11 +322,16 @@ class AdminMonitoringTest extends TestCase
             'is_active' => true,
         ]);
 
+        $spec = \App\Models\Specialization::query()->create(['name' => 'General Medicine']);
+
         $response = $this->actingAs($superAdmin)->post(route('admin.enrollment.store'), [
             'doctor_name' => 'Dr. Auto Approved',
             'mobile2' => '8888888888',
             'aadhar_card_no' => '123412341234',
             'pan_card_no' => 'ABCDE1234F',
+            'medical_registration_no' => 'REG-9001',
+            'specialization_id' => $spec->id,
+            'plan' => 1,
             'agent_name' => 'Should Be Overridden',
             'agent_phone_no' => '0000000000',
         ]);
@@ -596,9 +608,8 @@ class AdminMonitoringTest extends TestCase
             'isAdmin' => false,
         ])->render();
 
-        $this->assertStringContainsString('View Details', $employeeHtml);
-        $this->assertStringContainsString('title="Edit"', $employeeHtml);
-        $this->assertStringNotContainsString('title="Approve"', $employeeHtml);
+        $this->assertStringContainsString('Review full application', $employeeHtml);
+        $this->assertStringNotContainsString('Quick approve', $employeeHtml);
         $this->assertStringNotContainsString('title="Reject"', $employeeHtml);
 
         $noActionHtml = view('admin.enrollment.pending', [

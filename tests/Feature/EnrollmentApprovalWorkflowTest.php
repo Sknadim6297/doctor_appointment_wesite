@@ -37,10 +37,23 @@ class EnrollmentApprovalWorkflowTest extends TestCase
 
     private function adminWithApprove(): User
     {
-        return User::factory()->create([
+        $admin = User::factory()->create([
             'role' => 'admin',
             'is_active' => true,
         ]);
+
+        AdminPrivilege::query()->updateOrCreate(
+            ['user_id' => $admin->id, 'page_key' => 'enrollment', 'action_key' => 'approve'],
+            [
+                'group_key' => 'back_office_management',
+                'group_title' => 'Back Office Management',
+                'page_title' => 'Enrollment Records',
+                'action_title' => 'Approve',
+                'is_allowed' => true,
+            ]
+        );
+
+        return $admin;
     }
 
     public function test_reject_requires_reason(): void

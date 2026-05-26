@@ -49,14 +49,23 @@ class DashboardController extends Controller
 
         $productionDoctors = Enrollment::query()->productionReady();
 
-        $mainStats = (clone $productionDoctors)
-            ->selectRaw('
-                COUNT(DISTINCT id) as total_doctors,
-                COUNT(DISTINCT CASE WHEN money_rc_no IS NOT NULL AND money_rc_no != "" THEN id END) as money_receipt_count,
-                COUNT(DISTINCT CASE WHEN DATE_ADD(created_at, INTERVAL 1 YEAR) < ? THEN id END) as lapse_count,
-                SUM(DISTINCT CASE WHEN DATE_ADD(created_at, INTERVAL 1 YEAR) < ? AND DATE_ADD(created_at, INTERVAL 1 YEAR) >= ? THEN 1 ELSE 0 END) as last_six_months_lapse
-            ', [$now->toDateTimeString(), $now->toDateTimeString(), $sixMonthsAgo->toDateTimeString()])
-            ->first();
+        $doctorCount = (clone $productionDoctors)->count();
+        $moneyReceiptCount = (clone $productionDoctors)->withAccountListing()->count();
+        $lapseCutoff = $now->copy()->subYear();
+        $lapseCount = (clone $productionDoctors)
+            ->where('created_at', '<', $lapseCutoff)
+            ->count();
+        $lastSixMonthsLapse = (clone $productionDoctors)
+            ->where('created_at', '>=', $sixMonthsAgo->copy()->subYear())
+            ->where('created_at', '<', $lapseCutoff)
+            ->count();
+
+        $mainStats = (object) [
+            'total_doctors' => $doctorCount,
+            'money_receipt_count' => $moneyReceiptCount,
+            'lapse_count' => $lapseCount,
+            'last_six_months_lapse' => $lastSixMonthsLapse,
+        ];
 
         $doctorCount = (int) ($mainStats->total_doctors ?? 0);
         $moneyReceiptCount = (int) ($mainStats->money_receipt_count ?? 0);
@@ -120,10 +129,11 @@ class DashboardController extends Controller
         ];
 
         $recentStats = (clone $productionDoctors)
+            ->where('created_at', '>=', $sixMonthsAgo)
             ->selectRaw('
-                COUNT(CASE WHEN created_at >= ? THEN 1 END) as last_six_months_enrollment,
+                COUNT(*) as last_six_months_enrollment,
                 COALESCE(SUM(COALESCE(NULLIF(total_amount, 0), COALESCE(payment_amount, 0) + COALESCE(service_amount, 0))), 0) as all_time_payments
-            ', [$sixMonthsAgo->toDateTimeString()])
+            ')
             ->first();
 
         $lastSixMonthsEnrollment = (int) ($recentStats->last_six_months_enrollment ?? 0);
@@ -138,38 +148,37 @@ class DashboardController extends Controller
             })
             ->count();
 
-        $yearStats = (clone $productionDoctors)
-            ->selectRaw('
-                SUM(CASE WHEN YEAR(created_at) = ? THEN 1 ELSE 0 END) as current_enrollment,
-                SUM(CASE WHEN YEAR(created_at) = ? THEN 1 ELSE 0 END) as previous_enrollment,
-                COALESCE(SUM(CASE WHEN YEAR(created_at) = ? 
-                    THEN COALESCE(NULLIF(total_amount, 0), COALESCE(payment_amount, 0) + COALESCE(service_amount, 0))
-                    ELSE 0 END), 0) as this_year_payments,
-                COALESCE(SUM(CASE WHEN YEAR(created_at) = ? 
-                    THEN COALESCE(NULLIF(total_amount, 0), COALESCE(payment_amount, 0) + COALESCE(service_amount, 0))
-                    ELSE 0 END), 0) as previous_year_payments,
-                COALESCE(SUM(COALESCE(NULLIF(total_amount, 0), COALESCE(payment_amount, 0) + COALESCE(service_amount, 0))), 0) as all_time_payments
-            ', [$currentYear, $previousYear, $currentYear, $previousYear])
-            ->first();
+        $currentYearDoctors = (clone $productionDoctors)->whereYear('created_at', $currentYear);
+        $previousYearDoctors = (clone $productionDoctors)->whereYear('created_at', $previousYear);
 
-        $renewalYearStats = DB::table('policy_receipts')
-            ->selectRaw('
-                SUM(CASE WHEN YEAR(COALESCE(receive_date, created_at)) = ? THEN 1 ELSE 0 END) as current_renew,
-                SUM(CASE WHEN YEAR(COALESCE(receive_date, created_at)) = ? THEN 1 ELSE 0 END) as previous_renew
-            ', [$currentYear, $previousYear])
-            ->first();
+        $renewalCountForYear = static function (int $year): int {
+            return (int) PolicyReceipt::query()
+                ->where(function ($query) use ($year) {
+                    $query->whereYear('receive_date', $year)
+                        ->orWhere(function ($fallback) use ($year) {
+                            $fallback->whereNull('receive_date')->whereYear('created_at', $year);
+                        });
+                })
+                ->count();
+        };
 
         $yearComparison = [
-            'previous_enrollment' => (int) ($yearStats->previous_enrollment ?? 0),
-            'current_enrollment' => (int) ($yearStats->current_enrollment ?? 0),
-            'previous_renew' => (int) ($renewalYearStats->previous_renew ?? 0),
-            'current_renew' => (int) ($renewalYearStats->current_renew ?? 0),
+            'previous_enrollment' => (clone $previousYearDoctors)->count(),
+            'current_enrollment' => (clone $currentYearDoctors)->count(),
+            'previous_renew' => $renewalCountForYear($previousYear),
+            'current_renew' => $renewalCountForYear($currentYear),
         ];
 
+        $paymentSum = static function ($query) {
+            return (float) ($query->selectRaw(
+                'COALESCE(SUM(COALESCE(NULLIF(total_amount, 0), COALESCE(payment_amount, 0) + COALESCE(service_amount, 0))), 0) as total'
+            )->value('total') ?? 0);
+        };
+
         $payments = [
-            'this_year' => (float) ($yearStats->this_year_payments ?? 0),
-            'previous_year' => (float) ($yearStats->previous_year_payments ?? 0),
-            'all_time' => (float) ($yearStats->all_time_payments ?? 0),
+            'this_year' => $paymentSum(clone $currentYearDoctors),
+            'previous_year' => $paymentSum(clone $previousYearDoctors),
+            'all_time' => $paymentSum(clone $productionDoctors),
         ];
 
         $latest_doctors = Enrollment::query()
