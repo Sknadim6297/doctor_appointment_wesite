@@ -373,7 +373,7 @@
                         <select name="doctor" id="edit_doctor" onchange="edit_doctor_select(this.value);" required>
                             <option value="">--Select doctor--</option>
                             @foreach($doctors as $doctor)
-                                <option value="{{ $doctor->id }}">{{ $doctor->doctor_name }}{{ $doctor->money_rc_no ? ' (' . $doctor->money_rc_no . ')' : '' }}</option>
+                                <option value="{{ $doctor->id }}">{{ $doctor->doctor_name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -405,12 +405,7 @@
 
                     <div class="receipt-field">
                         <label>Money receipt year</label>
-                        <select class="form-control" name="money_reciept_year" id="edit_money_reciept_year">
-                            <option value="0">---Select Year---</option>
-                            @for($year = 2016; $year <= (int) date('Y'); $year++)
-                                <option value="{{ $year }}">{{ $year }}</option>
-                            @endfor
-                        </select>
+                        <input type="text" class="form-control" name="money_reciept_year" id="edit_money_reciept_year" placeholder="YY or YYYY" maxlength="4" inputmode="numeric">
                     </div>
 
                     <div class="receipt-field">
@@ -433,7 +428,7 @@
 
                     <div class="receipt-field">
                         <label>Payment date</label>
-                        <input type="date" class="form-control" name="payment_date" id="edit_payment_date" value="">
+                        <input type="text" class="form-control payment-date-input" name="payment_date" id="edit_payment_date" value="" placeholder="DD/MM/YY" autocomplete="off">
                     </div>
 
                     <div id="edit_appear_check_payment" class="full receipt-form-grid" style="display: none; grid-template-columns: repeat(1, minmax(0, 1fr));">
@@ -498,7 +493,7 @@
                         <select name="doctor" id="doctor" onchange="doctor_select(this.value);" required>
                             <option value="">--Select doctor--</option>
                             @foreach($doctors as $doctor)
-                                <option value="{{ $doctor->id }}">{{ $doctor->doctor_name }}{{ $doctor->money_rc_no ? ' (' . $doctor->money_rc_no . ')' : '' }}</option>
+                                <option value="{{ $doctor->id }}">{{ $doctor->doctor_name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -572,12 +567,7 @@
 
                     <div class="receipt-field">
                         <label for="money_reciept_year">Money receipt year</label>
-                        <select name="money_reciept_year" id="money_reciept_year">
-                            <option value="0">---Select Year---</option>
-                            @for($year = 2016; $year <= date('Y'); $year++)
-                                <option value="{{ $year }}">{{ $year }}</option>
-                            @endfor
-                        </select>
+                        <input type="text" name="money_reciept_year" id="money_reciept_year" placeholder="YY or YYYY" maxlength="4" inputmode="numeric">
                     </div>
 
                     <div class="receipt-field">
@@ -591,7 +581,7 @@
 
                     <div class="receipt-field">
                         <label for="payment_date">Payment date</label>
-                        <input type="date" name="payment_date" id="payment_date">
+                        <input type="text" name="payment_date" id="payment_date" class="payment-date-input" placeholder="DD/MM/YY" autocomplete="off">
                     </div>
 
                     <div id="appear_check_payment" class="full receipt-form-grid" style="display:none; grid-template-columns: repeat(1, minmax(0, 1fr));">
@@ -677,7 +667,7 @@ function openEditReceiptModal(receiptId) {
             document.getElementById('edit_speciliazition').value = String(receipt.speciliazition || '0');
             document.getElementById('edit_total_amount').value = receipt.payment_amount || '';
             document.getElementById('edit_money_reciept_no').value = receipt.money_reciept_no || '';
-            document.getElementById('edit_money_reciept_year').value = String(receipt.money_reciept_year || '0');
+            document.getElementById('edit_money_reciept_year').value = receipt.money_reciept_year ? String(receipt.money_reciept_year) : '';
             document.getElementById('edit_payment_process').value = receipt.payment_process || 'cash';
             document.getElementById('edit_payment_mode').value = receipt.payment_mode || 'Cash';
             document.getElementById('edit_payment_date').value = receipt.payment_date || '';

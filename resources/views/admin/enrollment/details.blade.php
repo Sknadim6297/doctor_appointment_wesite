@@ -550,7 +550,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Cash Date</p>
-                    <p class="mt-1 text-slate-900">{{ $enrollment->displayDateValue('payment_cash_date', 'd-m-Y') ?: $na }}</p>
+                    <p class="mt-1 text-slate-900">{{ \App\Support\AdminDateFormat::display($enrollment->payment_cash_date, $na) }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-semibold uppercase text-slate-500">Send Bond to Email</p>

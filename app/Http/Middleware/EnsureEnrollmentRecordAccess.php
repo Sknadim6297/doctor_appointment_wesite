@@ -39,8 +39,6 @@ class EnsureEnrollmentRecordAccess
             return $raw;
         }
 
-        $id = (int) $raw;
-
-        return $id > 0 ? Enrollment::query()->find($id) : null;
+        return $this->recordAccess->resolveFromRouteKey($raw);
     }
 }

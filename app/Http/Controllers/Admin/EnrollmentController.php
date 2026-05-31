@@ -414,9 +414,10 @@ class EnrollmentController extends Controller
      */
     public function edit($id)
     {
-        $enrollment = Enrollment::query()
-            ->with(['doctorDocuments' => fn ($q) => $q->where('is_active', true)->with('creator')->orderByDesc('id')])
-            ->findOrFail($id);
+        $enrollment = $this->resolveEnrollmentForEditOrFail($id);
+        $enrollment->load([
+            'doctorDocuments' => fn ($q) => $q->where('is_active', true)->with('creator')->orderByDesc('id'),
+        ]);
         $this->authorizeEnrollmentAccess($enrollment);
 
         if ($this->shouldForceReadOnly($enrollment)) {
@@ -476,7 +477,7 @@ class EnrollmentController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $enrollment = Enrollment::findOrFail($id);
+        $enrollment = $this->resolveEnrollmentForEditOrFail($id);
         $this->authorizeEnrollmentAccess($enrollment);
 
         if ($this->shouldForceReadOnly($enrollment)) {
@@ -1121,6 +1122,17 @@ class EnrollmentController extends Controller
     private function getUserRoleKey($user): string
     {
         return $this->resolveCreatorRole($user);
+    }
+
+    private function resolveEnrollmentForEditOrFail($id): Enrollment
+    {
+        $enrollment = $this->recordAccess->resolveFromRouteKey($id);
+
+        if (!$enrollment) {
+            abort(404);
+        }
+
+        return $enrollment;
     }
 
     public function updateLegacy(Request $request, $id)

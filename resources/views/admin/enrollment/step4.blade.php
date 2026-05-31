@@ -11,7 +11,7 @@
     $defaultRemark = old('post_doc_remark', data_get($draftStep4, 'post_doc_remark') ?: 'Documents dispatched for enrollment processing.');
     $defaultConsignment = old('post_doc_consignment_no', data_get($draftStep4, 'post_doc_consignment_no') ?: ('CN-' . $enrollment->id . '-' . now()->format('Ymd')));
     $defaultTrackingLink = old('tracking_link', data_get($draftStep4, 'tracking_link') ?: ('https://tracking.example.com/' . $enrollment->id));
-    $defaultPostBy = old('post_doc_by', data_get($draftStep4, 'post_doc_by') ?: (auth()->user()->name ?? 'Super Admin'));
+    $defaultPostBy = old('post_doc_by', data_get($draftStep4, 'post_doc_by', ''));
     $defaultReceivedBy = old('post_doc_recieved_by', data_get($draftStep4, 'post_doc_recieved_by') ?: ($enrollment->doctor_name ?? 'Office Desk'));
     $latestPolicy = !empty($policyReceipts) ? $policyReceipts->first() : null;
 @endphp
@@ -59,7 +59,7 @@
 
                 <div class="form-group">
                     <label class="mb-2 block text-sm font-semibold text-slate-700" for="post_doc_by">Post by <span class="text-red-500">*</span></label>
-                    <input type="text" id="post_doc_by" name="post_doc_by" value="{{ $defaultPostBy }}" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" required>
+                    <input type="text" id="post_doc_by" name="post_doc_by" value="{{ $defaultPostBy }}" placeholder="Enter post by name" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" required>
                 </div>
 
                 <div class="form-group">

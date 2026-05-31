@@ -182,7 +182,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('enrollment/{enrollment}/doctor-money-receipt', [PolicyReceiptController::class, 'updateDoctorMoneyReceiptFromEnrollment'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:enrollment'])->name('enrollment.doctor-money-receipt.update');
         Route::get('admin/doctor/{doctor}/money-receipt/edit', [PolicyReceiptController::class, 'doctorMoneyReceiptEditForDoctor'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:doctor'])->name('admin.doctor.money-receipt.edit');
         Route::post('admin/doctor/{doctor}/money-receipt/legacy-update', [PolicyReceiptController::class, 'legacyUpdateDoctorMoneyReceipt'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:doctor'])->name('admin.doctor.money-receipt.legacy-update');
-        Route::post('index.php/doctor_list/doctor_edit_action/{doctor}', [EnrollmentController::class, 'updateLegacy'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:doctor'])->name('enrollment.legacy-update');
+        Route::post('doctor_list/doctor_edit_action/{doctor}', [EnrollmentController::class, 'updateLegacy'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:doctor'])->name('enrollment.legacy-update');
+        Route::post('index.php/doctor_list/doctor_edit_action/{doctor}', [EnrollmentController::class, 'updateLegacy'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:doctor']);
         Route::get('enrollment/{enrollment}/step-2', [EnrollmentController::class, 'stepTwo'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:enrollment', 'enrollment.workflow.approved:enrollment'])->name('enrollment.step2');
         Route::post('enrollment/{enrollment}/step-2/continue', [EnrollmentController::class, 'continueFromStepTwo'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:enrollment', 'enrollment.workflow.approved:enrollment'])->name('enrollment.step2.continue');
         Route::get('enrollment/{enrollment}/step-2/pdf', [EnrollmentController::class, 'downloadStepTwoPdf'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:enrollment', 'enrollment.workflow.approved:enrollment'])->name('enrollment.step2.pdf');
@@ -346,7 +347,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('office-expensions/csv-report', [OfficeExpenseController::class, 'csvReport'])->middleware('admin.privilege:receipts,view')->name('office-expensions.csv');
         Route::get('index.php/money_reciept/office_expensions', [OfficeExpenseController::class, 'index'])->middleware('admin.privilege:receipts,view')->name('office-expensions.legacy-index');
         Route::get('index.php/money_reciept/office_expensions_csv', [OfficeExpenseController::class, 'csvReport'])->middleware('admin.privilege:receipts,view')->name('office-expensions.legacy-csv');
-        Route::get('index.php/doctor_list/edit_doctor/{doctor}', [EnrollmentController::class, 'edit'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:doctor', 'sensitive.otp:enrollment,doctor,edit'])->name('enrollment.legacy-edit');
+        Route::get('doctor_list/edit_doctor/{doctor}', [EnrollmentController::class, 'edit'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:doctor', 'sensitive.otp:enrollment,doctor,edit'])->name('enrollment.legacy-edit');
+        Route::get('index.php/doctor_list/edit_doctor/{doctor}', [EnrollmentController::class, 'edit'])->middleware(['admin.privilege:enrollment,edit', 'enrollment.access:doctor', 'sensitive.otp:enrollment,doctor,edit']);
         Route::get('index.php/renewal_list/renewal/{doctor}/{renewType?}', [EnrollmentController::class, 'edit'])->middleware('admin.privilege:enrollment,edit')->name('enrollment.legacy-renewal');
         
         // Doctor Cases

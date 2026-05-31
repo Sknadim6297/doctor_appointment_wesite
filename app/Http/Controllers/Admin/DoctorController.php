@@ -17,6 +17,7 @@ use App\Services\ActivityLogService;
 use App\Services\DoctorDocumentService;
 use App\Services\EnrollmentRecordAccessService;
 use App\Services\SecurityAlertService;
+use App\Support\AdminDateFormat;
 use App\Support\DoctorDocumentCatalog;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -663,7 +664,7 @@ class DoctorController extends Controller
                     $receipt->doctor_name ?? 'N/A',
                     $receipt->displayMoneyReceiptNo() ?? 'N/A',
                     $cheque,
-                    optional($receipt->displayPaymentDate())->format('d/m/Y') ?? 'N/A',
+                    AdminDateFormat::display($receipt->displayPaymentDate()),
                     filled($receipt->payment_amount) ? 'Rs. ' . number_format((float) $receipt->payment_amount, 0) . '/-' : 'N/A',
                     'Enrollment',
                 ]);
@@ -759,7 +760,7 @@ class DoctorController extends Controller
                     $cheque,
                     $receipt->bank ?: 'N.A',
                     $receipt->bank_branch ?: 'N.A',
-                    optional($receipt->payment_date ?? $receipt->created_at)->format('d/m/Y') ?? 'N/A',
+                    AdminDateFormat::display($receipt->payment_date ?? $receipt->created_at),
                     filled($receipt->cheque_amount) ? 'Rs. ' . number_format((float) $receipt->cheque_amount, 0) . '/-' : 'N/A',
                     'Renewal',
                     $receipt->remarks ?: 'None',
@@ -783,7 +784,7 @@ class DoctorController extends Controller
             'bank' => 'nullable|string|max:255',
             'bank_branch' => 'nullable|string|max:255',
             'cheque_amount' => 'nullable|numeric|min:0',
-            'payment_date' => 'nullable|date',
+            'payment_date' => 'nullable|string|max:20',
             'chequeFile' => 'nullable|file|max:10240',
             'remarks' => 'nullable|string|max:1000',
         ]);
@@ -805,7 +806,7 @@ class DoctorController extends Controller
             'bank' => $data['bank'] ?? null,
             'bank_branch' => $data['bank_branch'] ?? null,
             'cheque_amount' => $data['cheque_amount'] ?? null,
-            'payment_date' => $data['payment_date'] ?? null,
+            'payment_date' => AdminDateFormat::parseToDatabase($data['payment_date'] ?? null),
             'cheque_file' => $filePath,
             'remarks' => $data['remarks'] ?? null,
             'created_by' => $request->user()?->id,
@@ -829,7 +830,7 @@ class DoctorController extends Controller
             'bank' => 'nullable|string|max:255',
             'bank_branch' => 'nullable|string|max:255',
             'cheque_amount' => 'nullable|numeric|min:0',
-            'payment_date' => 'nullable|date',
+            'payment_date' => 'nullable|string|max:20',
             'chequeFile' => 'nullable|file|max:10240',
             'remarks' => 'nullable|string|max:1000',
         ]);
@@ -853,7 +854,7 @@ class DoctorController extends Controller
             'bank' => $data['bank'] ?? null,
             'bank_branch' => $data['bank_branch'] ?? null,
             'cheque_amount' => $data['cheque_amount'] ?? null,
-            'payment_date' => $data['payment_date'] ?? null,
+            'payment_date' => AdminDateFormat::parseToDatabase($data['payment_date'] ?? null),
             'remarks' => $data['remarks'] ?? null,
             'updated_by' => $request->user()?->id,
         ]);
@@ -895,7 +896,7 @@ class DoctorController extends Controller
                 'bank' => $receipt->bank,
                 'bank_branch' => $receipt->bank_branch,
                 'cheque_amount' => (float) ($receipt->cheque_amount ?? 0),
-                'payment_date' => optional($receipt->payment_date)->format('Y-m-d'),
+                'payment_date' => AdminDateFormat::inputValue($receipt->payment_date),
                 'remarks' => $receipt->remarks,
                 'cheque_file' => $receipt->cheque_file,
             ],
@@ -940,7 +941,7 @@ class DoctorController extends Controller
             'service_amount' => 'nullable|numeric|min:0',
             'payment_amount' => 'required|numeric|min:0',
             'payment_process' => 'required|string|in:cash,cheque,Online',
-            'payment_date' => 'nullable|date',
+            'payment_date' => 'nullable|string|max:20',
             'cheque_no' => 'nullable|string|max:100',
             'payment_bank' => 'nullable|string|max:200',
             'payment_branch' => 'nullable|string|max:200',
@@ -952,7 +953,7 @@ class DoctorController extends Controller
         $doctor = Enrollment::query()->productionReady()->findOrFail($validated['doctor']);
 
         $moneyReceiptNo = $validated['money_reciept_no'];
-        if (!empty($validated['money_reciept_year'])) {
+        if (!empty($validated['money_reciept_year']) && $validated['money_reciept_year'] !== '0') {
             $moneyReceiptNo .= '/' . $validated['money_reciept_year'];
         }
 
@@ -962,10 +963,7 @@ class DoctorController extends Controller
             'Online' => 3,
         ];
 
-        $paymentDate = null;
-        if (!empty($validated['payment_date'])) {
-            $paymentDate = Carbon::parse($validated['payment_date'])->format('Y-m-d');
-        }
+        $paymentDate = AdminDateFormat::parseToDatabase($validated['payment_date'] ?? null);
 
         $doctor->update([
             'money_rc_no' => $moneyReceiptNo,
@@ -1047,7 +1045,7 @@ class DoctorController extends Controller
             'service_amount' => 'nullable|numeric|min:0',
             'payment_amount' => 'required|numeric|min:0',
             'payment_process' => 'required|string|in:cash,cheque,Online',
-            'payment_date' => 'nullable|date',
+            'payment_date' => 'nullable|string|max:20',
             'cheque_no' => 'nullable|string|max:100',
             'payment_bank' => 'nullable|string|max:200',
             'payment_branch' => 'nullable|string|max:200',
@@ -1059,7 +1057,7 @@ class DoctorController extends Controller
         $doctor = Enrollment::query()->productionReady()->findOrFail($validated['doctor']);
 
         $moneyReceiptNo = $validated['money_reciept_no'];
-        if (!empty($validated['money_reciept_year'])) {
+        if (!empty($validated['money_reciept_year']) && $validated['money_reciept_year'] !== '0') {
             $moneyReceiptNo .= '/' . $validated['money_reciept_year'];
         }
 
@@ -1069,10 +1067,7 @@ class DoctorController extends Controller
             'Online' => 3,
         ];
 
-        $paymentDate = null;
-        if (!empty($validated['payment_date'])) {
-            $paymentDate = Carbon::parse($validated['payment_date'])->format('Y-m-d');
-        }
+        $paymentDate = AdminDateFormat::parseToDatabase($validated['payment_date'] ?? null);
 
         $doctor->update([
             'money_rc_no' => $moneyReceiptNo,
@@ -1163,7 +1158,7 @@ class DoctorController extends Controller
                 'payment_amount' => (float) ($receipt->payment_amount ?? 0),
                 'total_amount' => (float) ($receipt->total_amount ?? 0),
                 'payment_process' => $paymentProcess,
-                'payment_date' => optional($receipt->payment_cash_date)->format('Y-m-d'),
+                'payment_date' => AdminDateFormat::inputValue($receipt->payment_cash_date),
                 'cheque_no' => $receipt->payment_cheque,
                 'payment_bank' => $receipt->payment_bank_name,
                 'payment_branch' => $receipt->payment_branch_name,

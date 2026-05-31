@@ -86,7 +86,7 @@
                             <td><a target="_blank" href="{{ route('admin.doctors.show', $receipt->id) }}">{{ $receipt->doctor_name ?? 'N/A' }}</a></td>
                             <td>{{ $receipt->displayMoneyReceiptNo() ?? 'N/A' }}</td>
                             <td>{{ $cheque }}</td>
-                            <td>{{ optional($receipt->displayPaymentDate())->format('d/m/Y') ?? 'N/A' }}</td>
+                            <td>{{ \App\Support\AdminDateFormat::display($receipt->displayPaymentDate()) }}</td>
                             <td><b>Rs. {{ number_format((float) ($receipt->payment_amount ?? 0), 0) }}/-</b></td>
                             <td>Enrollment</td>
                             <td>

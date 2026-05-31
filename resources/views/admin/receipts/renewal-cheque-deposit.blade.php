@@ -111,7 +111,7 @@
                             <td>{{ $receipt->cheque_no ?? 'N/A' }}</td>
                             <td>{{ $receipt->bank ?: 'N.A' }}</td>
                             <td>{{ $receipt->bank_branch ?: 'N.A' }}</td>
-                            <td>{{ optional($receipt->payment_date ?? $receipt->created_at)->format('d/m/Y') ?? 'N/A' }}</td>
+                            <td>{{ \App\Support\AdminDateFormat::display($receipt->payment_date ?? $receipt->created_at) }}</td>
                             <td><b>Rs. {{ number_format((float) ($receipt->cheque_amount ?? 0), 0) }}/-</b></td>
                             <td>Renewal</td>
                             <td>{{ $receipt->remarks ?: 'None' }}</td>
@@ -167,7 +167,7 @@
                             <td>{{ $receipt->cheque_no ?? 'N.A' }}</td>
                             <td>{{ $receipt->bank ?: 'N.A' }}</td>
                             <td>{{ $receipt->bank_branch ?: 'N.A' }}</td>
-                            <td>{{ optional($receipt->payment_date ?? $receipt->created_at)->format('d/m/Y') ?? 'N/A' }}</td>
+                            <td>{{ \App\Support\AdminDateFormat::display($receipt->payment_date ?? $receipt->created_at) }}</td>
                             <td>Rs. {{ number_format((float) ($receipt->cheque_amount ?? 0), 0) }}/-</td>
                             <td>Renewal</td>
                             <td>{{ $receipt->remarks ?: 'None' }}</td>
@@ -238,7 +238,7 @@
 
                     <div class="receipt-field">
                         <label for="payment_date">Payment Date</label>
-                        <input type="date" name="payment_date" id="payment_date">
+                        <input type="text" name="payment_date" id="payment_date" class="payment-date-input" placeholder="DD/MM/YY" autocomplete="off">
                     </div>
 
                     <div class="receipt-field full">

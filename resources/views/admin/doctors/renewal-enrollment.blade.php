@@ -377,8 +377,8 @@
                             <label for="payment_date" class="block text-sm font-semibold text-slate-700 mb-2">
                                 Payment Date <span class="text-red-500">*</span>
                             </label>
-                            <input type="date" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                                name="payment_cash_date" id="payment_date" value="{{ now()->format('Y-m-d') }}">
+                            <input type="text" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 payment-date-input"
+                                name="payment_cash_date" id="payment_date" value="{{ \App\Support\AdminDateFormat::inputValue(now()) }}" placeholder="DD/MM/YY" autocomplete="off">
                             <span id="error_payment_date" class="text-red-600 text-xs"></span>
                         </div>
 
@@ -598,7 +598,7 @@ function isValidEmail(email) {
 <script>
     if (typeof flatpickr !== 'undefined') {
         document.querySelectorAll('.datepicker').forEach(function (input) {
-            flatpickr(input, { dateFormat: 'd/m/Y' });
+            flatpickr(input, { dateFormat: 'd/m/y', allowInput: true });
         });
     }
 </script>

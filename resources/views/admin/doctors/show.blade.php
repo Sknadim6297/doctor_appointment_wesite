@@ -245,7 +245,7 @@
                         <div class="kv-item"><div class="kv-key">Year of Registration</div><div class="kv-val">{{ $doctor->displayYearOfReg() ?? 'Not Provided' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Payment Mode</div><div class="kv-val">{{ $doctor->payment_mode ?? 'N/A' }}</div></div>
                         <div class="kv-item"><div class="kv-key">Plan</div><div class="kv-val">{{ $planName }}</div></div>
-                        <div class="kv-item"><div class="kv-key">Payment date</div><div class="kv-val">{{ optional($doctor->displayPaymentDate())->format('d/m/Y') ?? 'N/A' }}</div></div>
+                        <div class="kv-item"><div class="kv-key">Payment date</div><div class="kv-val">{{ \App\Support\AdminDateFormat::display($doctor->displayPaymentDate()) }}</div></div>
                     </div>
                 </div>
             </div>
@@ -534,7 +534,7 @@
                             <td>{{ $doctor->customer_id_no ?? 'N/A' }}</td>
                             <td>Rs. {{ number_format((float)($doctor->payment_amount ?? 0), 0) }}</td>
                             <td>{{ optional($doctor->displayPaymentDate())->format('Y') ?? 'N/A' }}</td>
-                            <td>{{ optional($doctor->displayPaymentDate())->format('d/m/Y') ?? 'N/A' }}</td>
+                            <td>{{ \App\Support\AdminDateFormat::display($doctor->displayPaymentDate()) }}</td>
                             <td>Rs. {{ number_format((float)($doctor->service_amount ?? 0), 0) }}</td>
                             <td>Rs. {{ number_format((float)(($doctor->payment_amount ?? 0) - ($doctor->service_amount ?? 0)), 0) }}</td>
                             <td>{{ $planName }}</td>

@@ -5,6 +5,10 @@
 
     RewriteEngine On
 
+    # Legacy admin URLs embed index.php in the path; always route them through Laravel.
+    RewriteCond %{REQUEST_URI} index\.php/ [NC]
+    RewriteRule .* index.php [L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

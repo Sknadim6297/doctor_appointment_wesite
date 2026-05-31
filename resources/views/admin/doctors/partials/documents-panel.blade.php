@@ -1,7 +1,7 @@
 @php
     use App\Support\DoctorDocumentCatalog;
     $groupedDocuments = $groupedDocuments ?? [];
-    $documentCategoryLabels = $documentCategoryLabels ?? DoctorDocumentCatalog::categoryLabels();
+    $documentCategoryLabels = $documentCategoryLabels ?? DoctorDocumentCatalog::uploadCategoryOptions();
     $canVerifyDocuments = $canVerifyDocuments ?? false;
     $isAdminManagedEnrollment = $isAdminManagedEnrollment ?? ($doctor->isAdminManaged() ?? false);
     $totalDocs = collect($groupedDocuments)->flatten(1)->count();
@@ -85,9 +85,12 @@
         </div>
     @endif
 
-    @foreach(DoctorDocumentCatalog::categoryOrder() as $categoryKey)
+    @foreach(DoctorDocumentCatalog::displayGroupOrder() as $displayGroup)
         @php
-            $items = $groupedDocuments[$categoryKey] ?? collect();
+            $items = collect();
+            foreach ($displayGroup['categories'] as $categoryKey) {
+                $items = $items->merge($groupedDocuments[$categoryKey] ?? collect());
+            }
             $sectionNeedsVerification = $items->contains(fn ($doc) => $doc->requiresVerificationWorkflow($doctor));
         @endphp
         @if($items->isEmpty())
@@ -98,7 +101,7 @@
                 <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
                     <i class="ri-folder-3-line"></i>
                 </span>
-                {{ $documentCategoryLabels[$categoryKey] ?? $categoryKey }}
+                {{ $displayGroup['label'] }}
                 <span class="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">{{ $items->count() }}</span>
             </h4>
             <div class="rounded-xl border border-slate-200 bg-white shadow-sm">

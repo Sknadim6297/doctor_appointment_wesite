@@ -96,7 +96,7 @@
             <div class="k">Membership No</div><div class="v">{{ $receipt->customer_id_no ?? 'N/A' }}</div>
             <div class="k">Money Receipt No</div><div class="v">{{ $receiptNoBase ?: 'N/A' }}</div>
             <div class="k">Money Receipt Year</div><div class="v">{{ $receiptNoYear ?: optional($receipt->created_at)->format('Y') ?: 'N/A' }}</div>
-            <div class="k">Date</div><div class="v">{{ optional($receipt->payment_cash_date)->format('d/m/Y') ?: optional($receipt->created_at)->format('d/m/Y') ?: 'N/A' }}</div>
+            <div class="k">Date</div><div class="v">{{ \App\Support\AdminDateFormat::display($receipt->payment_cash_date ?: $receipt->created_at) }}</div>
             <div class="k">Plan</div><div class="v">{{ $planLabel }}</div>
             <div class="k">Payment Process</div><div class="v">{{ $paymentProcess }}</div>
             <div class="k">Amount</div><div class="v">Rs. {{ number_format((float) ($receipt->payment_amount ?? 0), 0) }}/-</div>

@@ -362,7 +362,7 @@
                     return { subjectId: Number(enrollmentEdit[1]), accessAction: 'edit' };
                 }
 
-                const legacyEdit = path.match(/^\/admin\/index\.php\/doctor_list\/edit_doctor\/(\d+)$/);
+                const legacyEdit = path.match(/^\/admin\/(?:index\.php\/)?doctor_list\/edit_doctor\/(\d+)$/);
                 if (legacyEdit) {
                     return { subjectId: Number(legacyEdit[1]), accessAction: 'edit' };
                 }
@@ -421,6 +421,7 @@
         })();
     </script>
 
+    @include('admin.partials.payment-date-picker')
     @stack('scripts')
 </body>
 </html>

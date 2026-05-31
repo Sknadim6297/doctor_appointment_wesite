@@ -484,9 +484,10 @@
 
                     <div class="form-group">
                         <label class="form-label">Payment Date <span class="text-red-500">*</span></label>
-                           <input type="date" name="payment_cash_date" id="payment_cash_date"
-                               value="{{ old('payment_cash_date', optional(optional($enrollment)->payment_cash_date)->format('Y-m-d') ?? '') }}"
-                               class="form-input @error('payment_cash_date') border-red-400 @enderror">
+                           <input type="text" name="payment_cash_date" id="payment_cash_date"
+                               value="{{ old('payment_cash_date', \App\Support\AdminDateFormat::inputValue(optional($enrollment)->payment_cash_date ?? null)) }}"
+                               class="form-input payment-date-input @error('payment_cash_date') border-red-400 @enderror"
+                               placeholder="DD/MM/YY" autocomplete="off">
                         @error('payment_cash_date')<p class="form-error">{{ $message }}</p>@enderror
                     </div>
 
@@ -586,103 +587,82 @@
                     <hr class="border-slate-200">
                 @endif
 
-                {{-- Insurance Form --}}
+                {{-- Identity --}}
                 <div>
                     <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                        <span>Form Upload</span>
-                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Optional</span>
+                        <span>Identity</span>
+                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Required</span>
                     </h5>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {{-- Insurance Form --}}
+                        <div class="form-group">
+                            <label class="form-label">Aadhaar Card <span class="text-red-500">*</span></label>
+                            <input type="file" name="doc_aadhaar_card" id="doc_aadhaar_card" accept=".pdf,.jpg,.jpeg,.png" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">PDF or Image (Max 10MB)</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">PAN Card <span class="text-red-500">*</span></label>
+                            <input type="file" name="doc_pan_card" id="doc_pan_card" accept=".pdf,.jpg,.jpeg,.png" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">PDF or Image (Max 10MB)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-slate-200">
+
+                {{-- Professional Document --}}
+                <div>
+                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                        <span>Professional Document</span>
+                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Required</span>
+                    </h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="form-group md:col-span-2">
+                            <label class="form-label">Medical Registration Certificate <span class="text-red-500">*</span></label>
+                            <input type="file" name="doc_medical_registration" id="doc_medical_registration" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <p class="form-helper">PDF or Image (Max 10MB)</p>
+                        </div>
+
                         <div class="form-group">
                             <label class="form-label">Insurance Form</label>
                             <input type="file" name="doc_insurance_form" id="doc_insurance_form" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
                             <p class="form-helper">PDF, JPG, PNG, DOC, DOCX (Max 10MB)</p>
                         </div>
 
-                        {{-- Enrollment Form --}}
                         <div class="form-group">
                             <label class="form-label">Enrollment Form</label>
                             <input type="file" name="doc_enrollment_form" id="doc_enrollment_form" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
                             <p class="form-helper">PDF, JPG, PNG, DOC, DOCX (Max 10MB)</p>
                         </div>
+                    </div>
+                </div>
 
-                        {{-- Other Documents (Form section) --}}
+                <hr class="border-slate-200">
+
+                {{-- Others --}}
+                <div>
+                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                        <span>Others</span>
+                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Optional</span>
+                    </h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="form-group">
                             <label class="form-label">Supporting Documents</label>
                             <input type="file" name="doc_other_forms[]" id="doc_other_forms" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
                             <p class="form-helper">Multiple upload allowed • PDF, JPG, PNG, DOC, DOCX (Max 10MB each)</p>
                         </div>
-                    </div>
-                </div>
 
-                <hr class="border-slate-200">
-
-                {{-- Identity & Medical Documents --}}
-                <div>
-                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                        <span>Identity & Professional Documents</span>
-                        <span class="text-xs bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full">Required</span>
-                    </h5>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {{-- Aadhaar Card --}}
                         <div class="form-group">
-                            <label class="form-label">Aadhaar Card <span class="text-red-500">*</span></label>
-                            <input type="file" name="doc_aadhaar_card" id="doc_aadhaar_card" accept=".pdf,.jpg,.jpeg,.png" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
-                            <p class="form-helper">PDF or Image (Max 10MB)</p>
-                        </div>
-
-                        {{-- PAN Card --}}
-                        <div class="form-group">
-                            <label class="form-label">PAN Card <span class="text-red-500">*</span></label>
-                            <input type="file" name="doc_pan_card" id="doc_pan_card" accept=".pdf,.jpg,.jpeg,.png" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
-                            <p class="form-helper">PDF or Image (Max 10MB)</p>
-                        </div>
-
-                        {{-- Medical Registration Certificate --}}
-                        <div class="form-group md:col-span-2">
-                            <label class="form-label">Medical Registration Certificate <span class="text-red-500">*</span></label>
-                            <input type="file" name="doc_medical_registration" id="doc_medical_registration" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
-                            <p class="form-helper">PDF or Image (Max 10MB)</p>
-                        </div>
-                    </div>
-                </div>
-
-                <hr class="border-slate-200">
-
-                {{-- Other Documents & Payment --}}
-                <div>
-                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                        <span>Additional Documents</span>
-                        <span class="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">Optional</span>
-                    </h5>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {{-- Other Documents (Multiple) --}}
-                        <div class="form-group md:col-span-2">
-                            <label class="form-label">Supporting Documents (Multiple Upload Allowed)</label>
-                            <input type="file" name="doc_other_documents[]" id="doc_other_documents" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-purple-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <label class="form-label">Additional Supporting Documents</label>
+                            <input type="file" name="doc_other_documents[]" id="doc_other_documents" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
                             <p class="form-helper">Multiple files allowed • PDF, JPG, PNG, DOC, DOCX (Max 10MB each)</p>
                         </div>
-                    </div>
-                </div>
 
-                <hr class="border-slate-200">
-
-                {{-- Payment Documents --}}
-                <div>
-                    <h5 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                        <span>Payment Documents</span>
-                        <span class="text-xs px-2.5 py-0.5 rounded-full"
-                              :class="paymentMethod === '2' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'"
-                              x-text="paymentMethod === '2' ? 'Optional' : 'Proof required for Cheque / UPI'"></span>
-                    </h5>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {{-- Payment Document Upload --}}
                         <div class="form-group md:col-span-2">
                             <label class="form-label">Payment Document Upload
                                 <span class="text-red-500" x-show="paymentMethod !== '2'">*</span>
                             </label>
-                            <input type="file" name="doc_payment_document" id="doc_payment_document" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-amber-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
+                            <input type="file" name="doc_payment_document" id="doc_payment_document" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" class="block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:bg-slate-100">
                             <p class="form-helper">Receipt, Invoice, or Proof of Payment • PDF or Image (Max 10MB)</p>
                         </div>
                     </div>

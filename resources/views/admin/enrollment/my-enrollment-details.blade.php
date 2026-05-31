@@ -233,7 +233,7 @@
                 <div><p class="text-xs font-semibold uppercase text-slate-500">Bank Name</p><p class="mt-1 text-slate-900">{{ $enrollment->payment_bank_name ?: $na }}</p></div>
                 <div><p class="text-xs font-semibold uppercase text-slate-500">Branch Name</p><p class="mt-1 text-slate-900">{{ $enrollment->payment_branch_name ?: $na }}</p></div>
                 <div><p class="text-xs font-semibold uppercase text-slate-500">UPI Transaction ID</p><p class="mt-1 font-mono text-slate-900">{{ $enrollment->payment_upi_transaction_id ?: $na }}</p></div>
-                <div><p class="text-xs font-semibold uppercase text-slate-500">Cash Date</p><p class="mt-1 text-slate-900">{{ optional($enrollment->payment_cash_date)->format('d-m-Y') ?: $na }}</p></div>
+                <div><p class="text-xs font-semibold uppercase text-slate-500">Cash Date</p><p class="mt-1 text-slate-900">{{ \App\Support\AdminDateFormat::display($enrollment->payment_cash_date, $na) }}</p></div>
                 <div><p class="text-xs font-semibold uppercase text-slate-500">Send Bond to Email</p><p class="mt-1 text-slate-900">{{ $enrollment->bond_to_mail ? '✓ Yes' : '✗ No' }}</p></div>
             </div>
         </div>

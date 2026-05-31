@@ -140,8 +140,6 @@ class SensitiveDataOtpMiddleware
             return $raw;
         }
 
-        $id = is_numeric($raw) ? (int) $raw : 0;
-
-        return $id > 0 ? Enrollment::query()->find($id) : null;
+        return app(EnrollmentRecordAccessService::class)->resolveFromRouteKey($raw);
     }
 }

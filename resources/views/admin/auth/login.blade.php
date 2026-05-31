@@ -37,8 +37,11 @@
             <div>
                 <label for="password" class="mb-1.5 block text-sm font-semibold text-slate-700">Password</label>
                 <div class="relative">
-                    <i class="ri-lock-2-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                    <input id="password" name="password" type="password" required class="login-input login-input--with-icon" placeholder="Enter password">
+                    <i class="ri-lock-2-line pointer-events-none absolute left-3 top-1/2 z-[1] -translate-y-1/2 text-lg text-slate-400" aria-hidden="true"></i>
+                    <input id="password" name="password" type="password" required class="login-input login-input--with-icon login-input--with-toggle" placeholder="Enter password" autocomplete="current-password">
+                    <button type="button" id="password_visibility_toggle" class="login-password-toggle" title="Show password" aria-label="Show password" aria-pressed="false">
+                        <i class="ri-eye-line" id="password_visibility_icon" aria-hidden="true"></i>
+                    </button>
                 </div>
             </div>
 
@@ -55,5 +58,26 @@
 
         <p class="mt-6 text-center text-xs text-slate-500">&copy; {{ date('Y') }} MediForum. Premium Admin Platform.</p>
     </section>
+    <script>
+        (function () {
+            const input = document.getElementById('password');
+            const toggle = document.getElementById('password_visibility_toggle');
+            const icon = document.getElementById('password_visibility_icon');
+            if (!input || !toggle) {
+                return;
+            }
+
+            toggle.addEventListener('click', function () {
+                const show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                toggle.title = show ? 'Hide password' : 'Show password';
+                toggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+                if (icon) {
+                    icon.className = show ? 'ri-eye-off-line' : 'ri-eye-line';
+                }
+            });
+        })();
+    </script>
 </body>
 </html>

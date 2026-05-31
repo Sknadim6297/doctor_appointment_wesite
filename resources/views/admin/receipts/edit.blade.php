@@ -118,7 +118,7 @@
                     <select name="doctor" id="doctor" onchange="doctor_select(this.value);" required>
                         <option value="">--Select doctor--</option>
                         @foreach($doctors as $doctor)
-                            <option value="{{ $doctor->id }}" {{ (int) old('doctor', $receipt->id) === (int) $doctor->id ? 'selected' : '' }}>{{ $doctor->doctor_name }}{{ $doctor->money_rc_no ? ' (' . $doctor->money_rc_no . ')' : '' }}</option>
+                            <option value="{{ $doctor->id }}" {{ (int) old('doctor', $receipt->id) === (int) $doctor->id ? 'selected' : '' }}>{{ $doctor->doctor_name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -186,15 +186,10 @@
                     <input type="text" name="money_reciept_no" id="money_reciept_no" value="{{ old('money_reciept_no', $receiptNoBase) }}" required>
                 </div>
 
-                <div class="receipt-field">
-                    <label for="money_reciept_year">Money receipt year</label>
-                    <select name="money_reciept_year" id="money_reciept_year">
-                        <option value="0">---Select Year---</option>
-                        @foreach($years as $year)
-                            <option value="{{ $year }}" {{ (string) old('money_reciept_year', $receiptNoYear) === (string) $year ? 'selected' : '' }}>{{ $year }}</option>
-                        @endforeach
-                    </select>
-                </div>
+                    <div class="receipt-field">
+                        <label for="money_reciept_year">Money receipt year</label>
+                        <input type="text" name="money_reciept_year" id="money_reciept_year" value="{{ old('money_reciept_year', $receiptNoYear) }}" placeholder="YY or YYYY" maxlength="4" inputmode="numeric">
+                    </div>
 
                 <div class="receipt-field">
                     <label for="payment_process">Payment process</label>
@@ -205,10 +200,10 @@
                     </select>
                 </div>
 
-                <div class="receipt-field">
-                    <label for="payment_date">Payment date</label>
-                    <input type="date" name="payment_date" id="payment_date" value="{{ old('payment_date', optional($receipt->payment_cash_date)->format('Y-m-d')) }}">
-                </div>
+                    <div class="receipt-field">
+                        <label for="payment_date">Payment date</label>
+                        <input type="text" name="payment_date" id="payment_date" class="payment-date-input" value="{{ old('payment_date', \App\Support\AdminDateFormat::inputValue($receipt->payment_cash_date)) }}" placeholder="DD/MM/YY" autocomplete="off">
+                    </div>
 
                 <div id="appear_check_payment" class="full receipt-form-grid" style="display:none; grid-template-columns: repeat(1, minmax(0, 1fr));">
                     <div class="receipt-field">

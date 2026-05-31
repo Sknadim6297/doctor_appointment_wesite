@@ -99,4 +99,26 @@ class EnrollmentRecordAccessService
 
         return method_exists($user, 'hasAdminRole') && $user->hasAdminRole('super_admin');
     }
+
+    /**
+     * Resolve an enrollment from a route key (enrollment id or legacy_user_id).
+     */
+    public function resolveFromRouteKey(int|string|null $key): ?Enrollment
+    {
+        $id = (int) $key;
+
+        if ($id <= 0) {
+            return null;
+        }
+
+        $directMatch = Enrollment::query()->find($id);
+        if ($directMatch) {
+            return $directMatch;
+        }
+
+        return Enrollment::query()
+            ->where('legacy_user_id', $id)
+            ->latest('id')
+            ->first();
+    }
 }

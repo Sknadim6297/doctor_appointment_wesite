@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Enrollment;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Validator as ValidatorInstance;
@@ -73,7 +74,22 @@ final class EnrollmentFormValidation
             'payment_bank_name' => 'nullable|string|max:200',
             'payment_branch_name' => 'nullable|string|max:200',
             'payment_upi_transaction_id' => 'nullable|string|max:100',
-            'payment_cash_date' => 'nullable|date|before_or_equal:today',
+            'payment_cash_date' => ['nullable', 'string', 'max:20', function (string $attribute, mixed $value, \Closure $fail): void {
+                if ($value === null || trim((string) $value) === '') {
+                    return;
+                }
+
+                $parsed = \App\Support\AdminDateFormat::parseToDatabase((string) $value);
+                if ($parsed === null) {
+                    $fail('Payment date must be in DD/MM/YY format.');
+
+                    return;
+                }
+
+                if (Carbon::parse($parsed)->isFuture()) {
+                    $fail('Payment date cannot be in the future.');
+                }
+            }],
             'bond_to_mail' => 'nullable|in:Y',
         ];
     }

@@ -57,10 +57,9 @@ final class DoctorDocumentCatalog
     {
         $requiredTypes = self::requiredEnrollmentDocumentTypes();
         $sections = [
-            'Form Upload (Optional)' => ['doc_insurance_form', 'doc_enrollment_form', 'doc_other_forms'],
-            'Identity & Professional Documents (Required)' => ['doc_aadhaar_card', 'doc_pan_card', 'doc_medical_registration'],
-            'Supporting Documents (Optional)' => ['doc_other_documents'],
-            'Payment Documents (Optional)' => ['doc_payment_document'],
+            'Identity' => ['doc_aadhaar_card', 'doc_pan_card'],
+            'Professional Document' => ['doc_medical_registration', 'doc_insurance_form', 'doc_enrollment_form'],
+            'Others' => ['doc_other_forms', 'doc_other_documents', 'doc_payment_document'],
         ];
 
         $map = self::enrollmentFieldMap();
@@ -139,11 +138,31 @@ final class DoctorDocumentCatalog
     public static function categoryLabels(): array
     {
         return [
-            self::CATEGORY_KYC => 'KYC Documents',
-            self::CATEGORY_REGISTRATION => 'Registration Documents',
-            self::CATEGORY_ENROLLMENT_FORM => 'Enrollment Forms',
-            self::CATEGORY_PAYMENT => 'Payment Documents',
-            self::CATEGORY_ADDITIONAL => 'Additional Uploads',
+            self::CATEGORY_KYC => 'Identity',
+            self::CATEGORY_REGISTRATION => 'Professional Document',
+            self::CATEGORY_ENROLLMENT_FORM => 'Professional Document',
+            self::CATEGORY_PAYMENT => 'Others',
+            self::CATEGORY_ADDITIONAL => 'Others',
+        ];
+    }
+
+    /** @return list<array{label: string, categories: list<string>}> */
+    public static function displayGroupOrder(): array
+    {
+        return [
+            ['label' => 'Identity', 'categories' => [self::CATEGORY_KYC]],
+            ['label' => 'Professional Document', 'categories' => [self::CATEGORY_REGISTRATION, self::CATEGORY_ENROLLMENT_FORM]],
+            ['label' => 'Others', 'categories' => [self::CATEGORY_PAYMENT, self::CATEGORY_ADDITIONAL]],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function uploadCategoryOptions(): array
+    {
+        return [
+            self::CATEGORY_KYC => 'Identity',
+            self::CATEGORY_REGISTRATION => 'Professional Document',
+            self::CATEGORY_ADDITIONAL => 'Others',
         ];
     }
 

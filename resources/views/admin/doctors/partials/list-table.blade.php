@@ -95,7 +95,7 @@
                         <div class="text-sm whitespace-nowrap">{{ optional($nextRenewal)->format('d M Y') ?? '—' }}</div>
                     </td>
                     <td>
-                        <div class="text-sm whitespace-nowrap">{{ optional($paymentDate)->format('d M Y') ?? '—' }}</div>
+                        <div class="text-sm whitespace-nowrap">{{ \App\Support\AdminDateFormat::display($paymentDate) }}</div>
                     </td>
                     <td>
                         @if($daysUntilRenewal === null)

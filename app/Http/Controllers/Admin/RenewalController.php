@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Enrollment;
 use App\Models\Specialization;
 use App\Services\ActivityLogService;
+use App\Support\AdminDateFormat;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
@@ -72,7 +73,7 @@ class RenewalController extends Controller
             'payment_bank_name' => 'nullable|string',
             'payment_branch_name' => 'nullable|string',
             'upi_transaction_id' => 'nullable|string',
-            'payment_cash_date' => 'required|date',
+            'payment_cash_date' => 'required|string|max:20',
             'previous_bond' => 'nullable|file|mimes:pdf,jpg,png,doc,docx|max:2048'
         ]);
 
@@ -100,7 +101,7 @@ class RenewalController extends Controller
             'payment_bank_name' => $validated['payment_bank_name'] ?? null,
             'payment_branch_name' => $validated['payment_branch_name'] ?? null,
             'payment_upi_transaction_id' => $validated['upi_transaction_id'] ?? null,
-            'payment_cash_date' => $validated['payment_cash_date'],
+            'payment_cash_date' => AdminDateFormat::parseToDatabase($validated['payment_cash_date']) ?? $validated['payment_cash_date'],
             'renewal_date' => $validated['renewal_date_rn'],
             'policy_date' => $validated['policy_date'],
             'last_renewal_date' => now()->format('Y-m-d'), // Track when renewal was submitted
